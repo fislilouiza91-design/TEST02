@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════════════════
-   Smart Shopper — Content Script (v25 - Product ID Deduplication)
-   Fixed: Absolute duplicate removal using AliExpress Product ID.
+   Smart Shopper — Content Script (v26 - Price Accuracy Fix)
+   Fixed: Takes lowest variant price + adds disclaimer. Strict dedup.
    ═══════════════════════════════════════════════════════ */
 
 (function () {
@@ -13,7 +13,7 @@
   const LANG = typeof SS_LANG !== "undefined" ? SS_LANG : "en";
   const IS_RTL = typeof SS_RTL !== "undefined" ? SS_RTL : false;
 
-  console.log(`[Smart Shopper] v25 | Language: ${LANG}`);
+  console.log(`[Smart Shopper] v26 | Language: ${LANG}`);
 
   const PANEL_ID = "ss-floating-panel";
   const WORKER_URL = "https://smart-shopper-proxy.fislilouiza91.workers.dev";
@@ -27,11 +27,10 @@
   let isScanning = false;
 
   // ═══════════════════════════════════════════════════════
-  // ⭐ أداة استخراج رقم المنتج الفريد (الحل الجذري للتكرار)
+  // ⭐ أداة استخراج رقم المنتج الفريد (لمنع التكرار)
   // ═══════════════════════════════════════════════════════
   function getProductId(url) {
     if (!url) return "";
-    // يدعم صيغ الروابط الشائعة في علي إكسبريس
     const m = url.match(/\/item\/(\d+)\.html/) || url.match(/\/i\/(\d+)\.html/);
     return m ? m[1] : url; 
   }
@@ -116,7 +115,7 @@
   }
 
   // ═══════════════════════════════════════════════════════
-  // PRICE EXTRACTION
+  // PRICE EXTRACTION (محسّن v26)
   // ═══════════════════════════════════════════════════════
 
   function getPriceInfo() {
@@ -132,15 +131,23 @@
       }
     } catch (_) {}
 
-    const metaSels = [
+    // ⭐ محدّدات أكثر دقة لسعر المنتج الرئيسي
+    const mainPriceSels = [
+      ".product-price-value",
+      ".es--wrap--MvFvp .es--text--VHm7A",
+      "[class*='price--current']",
+      "[class*='product-price']",
       "meta[property='product:price:amount']",
       "meta[property='og:price:amount']",
       "meta[itemprop='price']",
     ];
-    for (const sel of metaSels) {
-      const m = document.querySelector(sel);
-      if (m) {
-        const v = parseFloat(m.getAttribute("content"));
+    for (const sel of mainPriceSels) {
+      const el = document.querySelector(sel);
+      if (!el) continue;
+      const txt = el.innerText || el.getAttribute("content") || "";
+      const nums = extractNumbers(txt);
+      if (nums.length) {
+        const v = nums[0].value;
         if (v > 0.5) return { price: v, currency: detectCurrency() };
       }
     }
@@ -201,8 +208,8 @@
           });
 
         if (valid.length) {
-          valid.sort((a, b) => b.value - a.value);
-          return { price: valid[0].value, currency: detectCurrency() };
+          valid.sort((a, b) => a.value - b.value); // ⭐ ترتيب تصاعدي
+          return { price: valid[0].value, currency: detectCurrency() }; // ⭐ أخذ الأقل
         }
       }
     }
@@ -214,8 +221,8 @@
       return !isExcludedContext(top40.slice(s, e));
     });
     if (nums.length) {
-      nums.sort((a, b) => b.value - a.value);
-      return { price: nums[0].value, currency: detectCurrency() };
+      nums.sort((a, b) => a.value - b.value); // ⭐ ترتيب تصاعدي
+      return { price: nums[0].value, currency: detectCurrency() }; // ⭐ أخذ الأقل
     }
 
     return { price: null, currency: "USD" };
@@ -416,7 +423,7 @@
   }
 
   // ═══════════════════════════════════════════════════════
-  // CARD PRICE EXTRACTION
+  // CARD PRICE EXTRACTION (⭐ v26: أخذ أقل سعر متاح)
   // ═══════════════════════════════════════════════════════
 
   function extractPriceInfoFromCard(card) {
@@ -426,7 +433,7 @@
     if (dMatch) discount = parseInt(dMatch[1], 10);
 
     const priceEls = card.querySelectorAll("[class*='price'], [class*='Price']");
-    let current = 0;
+    let current = Infinity; // ⭐ نبدأ بـ Infinity للبحث عن الأقل
     let old = 0;
 
     for (const el of priceEls) {
@@ -443,9 +450,15 @@
       const v = nums[0].value;
       if (v < 0.5) continue;
 
-      if (isOld) { if (v > old) old = v; }
-      else { if (v > current) current = v; }
+      if (isOld) { 
+        if (v > old) old = v; 
+      } else { 
+        // ⭐ نأخذ أقل سعر (السعر المبدئي) وليس الأغلى
+        if (v < current) current = v; 
+      }
     }
+
+    if (current === Infinity) current = 0;
 
     if (old > 0 && discount > 0 && discount < 90) {
       const expected = old * (1 - discount / 100);
@@ -467,10 +480,10 @@
       }
       if (valid.length) {
         valid.sort((a, b) => a - b);
-        current = valid[valid.length - 1];
+        current = valid[0]; // ⭐ أخذ الأقل
         if (valid.length > 1) {
-          const lowest = valid[0];
-          if (current / lowest > 1.15) old = current;
+          const highest = valid[valid.length - 1];
+          if (highest / current > 1.15) old = highest;
         }
       }
     }
@@ -523,7 +536,7 @@
   }
 
   // ═══════════════════════════════════════════════════════
-  // SCRAPER (تحديث: استخدام رقم المنتج الفريد)
+  // SCRAPER (مع منع التكرار)
   // ═══════════════════════════════════════════════════════
 
   function findCardContainer(link) {
@@ -538,7 +551,7 @@
 
   function collectCandidates(currentKeywords) {
     const results = [];
-    const seenProductIds = new Set(); // ⭐ استخدام رقم المنتج لمنع التكرار
+    const seenProductIds = new Set();
     const currentUrl = location.href.split("?")[0];
     const currentId = getProductId(currentUrl);
     const links = document.querySelectorAll("a[href*='/item/']");
@@ -549,7 +562,6 @@
         const href = link.href.split("?")[0];
         const productId = getProductId(href);
 
-        // تجاهل المنتج الحالي أو المنتجات المكررة
         if (!productId || productId === currentId || seenProductIds.has(productId)) continue;
 
         const card = findCardContainer(link);
@@ -564,7 +576,7 @@
         const title = extractTitleFromCard(card);
         if (!title || title.length < 8) continue;
 
-        seenProductIds.add(productId); // ⭐ منع التكرار بناءً على رقم المنتج
+        seenProductIds.add(productId);
 
         const matchCount = countMatches(title, currentKeywords);
         const sold = extractSoldFromCard(card);
@@ -695,7 +707,6 @@
           strictFiltered.sort((a, b) => b.matchCount - a.matchCount || Math.abs(a.price - cp) - Math.abs(b.price - cp));
           
           if (strictFiltered.length > 0) {
-            // ⭐ إصلاح التكرار بناءً على رقم المنتج
             const uniqueApi = [];
             const seenApiIds = new Set();
             strictFiltered.forEach(it => {
@@ -754,7 +765,9 @@
         <button class="ss-chip" data-f="sold">${T("mostSold")}</button>
       </div>
       <div class="ss-list" id="ss-list"></div>
-      <div class="ss-footer">${T("footer")}</div>
+      <div class="ss-footer" style="font-size:10px; color:#a1a1aa; text-align:center; padding: 8px 12px; border-top: 1px solid #f4f4f5;">
+        ⚠️ الأسعار تقريبية. قد تنخفض عند الدخول بسبب الكوبونات أو الخيارات.
+      </div>
     `;
     document.body.appendChild(panel);
 
@@ -1005,5 +1018,5 @@
   });
 
   run();
-  console.log(`[Smart Shopper] v25 ready.`);
+  console.log(`[Smart Shopper] v26 ready.`);
 })();
