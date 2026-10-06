@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════════════════
-   Smart Shopper — Content Script (v24 - Deduplication Fix)
-   Fixed: Prevents duplicate identical products. Filters strict.
+   Smart Shopper — Content Script (v25 - Product ID Deduplication)
+   Fixed: Absolute duplicate removal using AliExpress Product ID.
    ═══════════════════════════════════════════════════════ */
 
 (function () {
@@ -13,10 +13,10 @@
   const LANG = typeof SS_LANG !== "undefined" ? SS_LANG : "en";
   const IS_RTL = typeof SS_RTL !== "undefined" ? SS_RTL : false;
 
-  console.log(`[Smart Shopper] v24 | Language: ${LANG}`);
+  console.log(`[Smart Shopper] v25 | Language: ${LANG}`);
 
   const PANEL_ID = "ss-floating-panel";
-  const WORKER_URL = "https://smart-shopper-proxy.fislilouiza91.workers.dev"; 
+  const WORKER_URL = "https://smart-shopper-proxy.fislilouiza91.workers.dev";
   const CACHE_TTL = 1000 * 60 * 30;
 
   let currentProduct = null;
@@ -25,6 +25,16 @@
   let minimized = false;
   let dataSource = "none";
   let isScanning = false;
+
+  // ═══════════════════════════════════════════════════════
+  // ⭐ أداة استخراج رقم المنتج الفريد (الحل الجذري للتكرار)
+  // ═══════════════════════════════════════════════════════
+  function getProductId(url) {
+    if (!url) return "";
+    // يدعم صيغ الروابط الشائعة في علي إكسبريس
+    const m = url.match(/\/item\/(\d+)\.html/) || url.match(/\/i\/(\d+)\.html/);
+    return m ? m[1] : url; 
+  }
 
   // ═══════════════════════════════════════════════════════
   // CACHE
@@ -513,7 +523,7 @@
   }
 
   // ═══════════════════════════════════════════════════════
-  // SCRAPER (مع إصلاح التكرار)
+  // SCRAPER (تحديث: استخدام رقم المنتج الفريد)
   // ═══════════════════════════════════════════════════════
 
   function findCardContainer(link) {
@@ -528,16 +538,19 @@
 
   function collectCandidates(currentKeywords) {
     const results = [];
-    const seenUrls = new Set();
-    const seenProducts = new Set(); // ⭐ جديد: لمنع تكرار المنتجات
+    const seenProductIds = new Set(); // ⭐ استخدام رقم المنتج لمنع التكرار
     const currentUrl = location.href.split("?")[0];
+    const currentId = getProductId(currentUrl);
     const links = document.querySelectorAll("a[href*='/item/']");
     console.log(`[Smart Shopper] Scanning ${links.length} links`);
 
     for (const link of links) {
       try {
         const href = link.href.split("?")[0];
-        if (!href || href === currentUrl || seenUrls.has(href)) continue;
+        const productId = getProductId(href);
+
+        // تجاهل المنتج الحالي أو المنتجات المكررة
+        if (!productId || productId === currentId || seenProductIds.has(productId)) continue;
 
         const card = findCardContainer(link);
         if (!card) continue;
@@ -551,19 +564,12 @@
         const title = extractTitleFromCard(card);
         if (!title || title.length < 8) continue;
 
-        // ⭐ إصلاح التكرار: تجاهل المنتجات المتطابقة في العنوان والسعر
-        const productKey = `${title.toLowerCase().trim()}|${priceInfo.price}`;
-        if (seenProducts.has(productKey)) {
-            console.log(`[Smart Shopper] Skipped duplicate: ${title.substring(0, 30)}...`);
-            continue;
-        }
-        seenProducts.add(productKey);
+        seenProductIds.add(productId); // ⭐ منع التكرار بناءً على رقم المنتج
 
         const matchCount = countMatches(title, currentKeywords);
         const sold = extractSoldFromCard(card);
         const rating = extractRatingFromCard(card);
 
-        seenUrls.add(href);
         results.push({
           store: shortenTitle(title),
           img,
@@ -577,7 +583,7 @@
         });
       } catch (_) {}
     }
-    console.log(`[Smart Shopper] Candidates after deduplication: ${results.length}`);
+    console.log(`[Smart Shopper] Candidates after ID deduplication: ${results.length}`);
     return results;
   }
 
@@ -689,12 +695,12 @@
           strictFiltered.sort((a, b) => b.matchCount - a.matchCount || Math.abs(a.price - cp) - Math.abs(b.price - cp));
           
           if (strictFiltered.length > 0) {
-            // ⭐ إصلاح التكرار هنا أيضاً
+            // ⭐ إصلاح التكرار بناءً على رقم المنتج
             const uniqueApi = [];
-            const seenApi = new Set();
+            const seenApiIds = new Set();
             strictFiltered.forEach(it => {
-                const key = `${(it.title || "").toLowerCase().trim()}|${it.price}`;
-                if (!seenApi.has(key)) { seenApi.add(key); uniqueApi.push(it); }
+                const pid = getProductId(it.link);
+                if (!seenApiIds.has(pid)) { seenApiIds.add(pid); uniqueApi.push(it); }
             });
 
             saveCache(product, uniqueApi, "api");
@@ -999,5 +1005,5 @@
   });
 
   run();
-  console.log(`[Smart Shopper] v24 ready.`);
+  console.log(`[Smart Shopper] v25 ready.`);
 })();
