@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════════════════
-   Smart Shopper — Content Script (v27 RICH)
-   Smart Match + Welcome Deal + Rich UI.
+   Smart Shopper — Content Script (v28 COMPACT)
+   Smart Match + Welcome Deal + Compact UI.
    ═══════════════════════════════════════════════════════ */
 
 (function () {
@@ -13,7 +13,7 @@
   const LANG = typeof SS_LANG !== "undefined" ? SS_LANG : "en";
   const IS_RTL = typeof SS_RTL !== "undefined" ? SS_RTL : false;
 
-  console.log(`[Smart Shopper] v27 RICH | Lang: ${LANG}`);
+  console.log(`[Smart Shopper] v28 COMPACT | Lang: ${LANG}`);
 
   const PANEL_ID = "ss-floating-panel";
   const WORKER_URL = "https://cold-art-c5df.fislilouiza91.workers.dev";
@@ -663,13 +663,10 @@
     if (!list) return;
     list.innerHTML = Array.from({ length: 3 }).map(() => `
       <div class="ss-skeleton">
-        <div class="ss-sk-row">
-          <div class="ss-sk ss-sk-thumb"></div>
-          <div class="ss-sk-lines">
-            <div class="ss-sk ss-sk-line"></div>
-            <div class="ss-sk ss-sk-line short"></div>
-            <div class="ss-sk ss-sk-line" style="width:40%"></div>
-          </div>
+        <div class="ss-sk ss-sk-thumb"></div>
+        <div class="ss-sk-lines">
+          <div class="ss-sk ss-sk-line"></div>
+          <div class="ss-sk ss-sk-line short"></div>
         </div>
       </div>
     `).join("");
@@ -697,6 +694,10 @@
     return copy.sort((a, b) => b._rank - a._rank);
   }
 
+  // ═══════════════════════════════════════════════════════
+  // ⭐ COMPACT LIST
+  // ═══════════════════════════════════════════════════════
+
   function renderList() {
     const list = document.getElementById("ss-list");
     if (!list) return;
@@ -706,13 +707,12 @@
     const minPrice = Math.min(...items.map(s => s.price).filter(p => p > 0));
     const currentPrice = currentProduct?.price || 0;
 
-    list.innerHTML = items.slice(0, 12).map((s, i) => {
+    list.innerHTML = items.slice(0, 15).map((s, i) => {
       const rank = i + 1;
       const isCheap = s.price === minPrice && s.price > 0;
       const cardClass = rank === 1 ? "ss-best" : (isCheap ? "ss-cheap" : "");
       const rankClass = rank <= 3 ? `ss-r${rank}` : "";
 
-      // ═══ Badge ═══
       let badge = "";
       if (activeFilter === "cheap" && rank === 1) badge = `<span class="ss-badge ss-badge-cheap">${T("cheapestTag")}</span>`;
       else if (activeFilter === "discount" && rank === 1) badge = `<span class="ss-badge ss-badge-hot">${T("bestDeal")}</span>`;
@@ -721,75 +721,34 @@
       else if (isCheap) badge = `<span class="ss-badge ss-badge-cheap">${T("bestPrice")}</span>`;
       else if (s.isSmartMatch) badge = `<span class="ss-badge ss-badge-match">✓ MATCH</span>`;
 
-      // ═══ Discount ═══
       const discountBadge = s.discount > 0
         ? `<span class="ss-save-badge">-${s.discount}%</span>`
         : "";
 
-      // ═══ Old price ═══
       const oldPriceHtml = s.oldPrice > 0 && s.oldPrice > s.price
         ? `<span class="ss-price-old">${formatPrice(s.oldPrice, currentProduct.currency)}</span>`
         : "";
 
-      // ═══ Tags ═══
-      const tags = [];
-      if (s.rating > 0) {
-        tags.push(`<span class="ss-tag-item ss-tag-rating">
-          <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
-          ${s.rating.toFixed(1)}
-        </span>`);
-      }
-      if (s.sold > 0) {
-        tags.push(`<span class="ss-tag-item ss-tag-sold">
-          <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><path d="M3 6h18M16 10a4 4 0 0 1-8 0"/></svg>
-          ${fmt(s.sold)} ${T("sold")}
-        </span>`);
-      }
-      if (s.isSmartMatch) {
-        tags.push(`<span class="ss-tag-item ss-tag-ship">
-          <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
-          Same product
-        </span>`);
-      }
-
-      // ═══ Comparison vs Current ═══
-      let compareHtml = "";
+      let compareVs = "";
       if (currentPrice && s.price > 0) {
         const diff = s.price - currentPrice;
         const pct = Math.round(Math.abs(diff) / currentPrice * 100);
-        if (diff < 0) {
-          compareHtml = `
-            <div class="ss-compare-bar">
-              <div class="ss-compare-left">
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="23 18 13.5 8.5 8.5 13.5 1 6"/><polyline points="17 18 23 18 23 12"/></svg>
-                <span>Save vs your product</span>
-              </div>
-              <div class="ss-compare-vs up">−${pct}%</div>
-            </div>`;
-        } else if (diff > 0) {
-          compareHtml = `
-            <div class="ss-compare-bar">
-              <div class="ss-compare-left">
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
-                <span>More than your product</span>
-              </div>
-              <div class="ss-compare-vs down">+${pct}%</div>
-            </div>`;
-        } else {
-          compareHtml = `
-            <div class="ss-compare-bar">
-              <div class="ss-compare-left">
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                <span>Same price</span>
-              </div>
-              <div class="ss-compare-vs">=</div>
-            </div>`;
-        }
+        if (diff < 0) compareVs = `<span class="ss-compare-vs up">−${pct}%</span>`;
+        else if (diff > 0) compareVs = `<span class="ss-compare-vs down">+${pct}%</span>`;
+        else compareVs = `<span class="ss-compare-vs same">=</span>`;
       }
 
-      // ═══ Match bar (للبحث النصي فقط) ═══
-      const matchBar = !s.isSmartMatch ? `
-        <div class="ss-match-bar">
+      const subtitleItems = [];
+      if (s.rating > 0) subtitleItems.push(`<span class="ss-tag-inline rating">★ ${s.rating.toFixed(1)}</span>`);
+      if (s.sold > 0) subtitleItems.push(`<span class="ss-tag-inline sold">${fmt(s.sold)} ${T("sold")}</span>`);
+      if (s.isSmartMatch) subtitleItems.push(`<span class="ss-tag-inline same">✓ SAME</span>`);
+
+      const imgHtml = s.img
+        ? `<img src="${s.img}" loading="lazy" onerror="this.style.display='none';this.parentElement.innerHTML='🖼️'">`
+        : `🖼️`;
+
+      const matchLine = !s.isSmartMatch ? `
+        <div class="ss-match-line">
           <div class="ss-match-track">
             <div class="ss-match-fill ${s.similarity >= 50 ? "" : s.similarity >= 25 ? "mid" : "low"}"
                  style="width:${s.similarity}%"></div>
@@ -797,34 +756,32 @@
           <div class="ss-match-text">${s.similarity}% MATCH</div>
         </div>` : "";
 
-      const imgHtml = s.img
-        ? `<img src="${s.img}" loading="lazy" onerror="this.style.display='none';this.parentElement.innerHTML='🖼️'">`
-        : `🖼️`;
-
       return `
         <div class="ss-card ${cardClass}" data-idx="${i}">
-          <div class="ss-card-top">
-            <div class="ss-rank-wrap">
-              <div class="ss-rank ${rankClass}">${rank}</div>
-              ${badge}
-            </div>
-          </div>
-
-          <div class="ss-card-main">
+          <div class="ss-card-row">
+            <div class="ss-rank ${rankClass}">${rank}</div>
             <div class="ss-card-thumb">${imgHtml}</div>
-            <div class="ss-card-body">
-              <div class="ss-card-title">${esc(s.store)}</div>
-              <div class="ss-card-price-row">
+            <div class="ss-card-info">
+              <div class="ss-card-title">
+                ${esc(s.store)}
+                ${badge}
+              </div>
+              <div class="ss-card-subtitle">
+                ${subtitleItems.join('<span class="ss-sep">●</span>')}
+              </div>
+            </div>
+            <div class="ss-price-col">
+              <div class="ss-price-line">
                 <span class="ss-price-now">${formatPrice(s.price, currentProduct.currency)}</span>
-                ${oldPriceHtml}
                 ${discountBadge}
               </div>
-              <div class="ss-card-tags">${tags.join("")}</div>
+              <div style="display:flex;align-items:center;justify-content:flex-end;gap:5px">
+                ${oldPriceHtml}
+                ${compareVs}
+              </div>
             </div>
           </div>
-
-          ${compareHtml}
-          ${matchBar}
+          ${matchLine}
         </div>
       `;
     }).join("");
@@ -888,7 +845,7 @@
     await sleep(1500);
     currentProduct = extractProduct();
     console.log("[Smart Shopper] ════════════════════════════════");
-    console.log("[Smart Shopper] v27 RICH — Smart Match");
+    console.log("[Smart Shopper] v28 COMPACT — Smart Match");
     console.log("[Smart Shopper] Worker:", WORKER_URL);
     console.log("[Smart Shopper] Product:", currentProduct);
     console.log("[Smart Shopper] ════════════════════════════════");
@@ -907,5 +864,5 @@
   });
 
   run();
-  console.log("[Smart Shopper] v27 RICH ready.");
+  console.log("[Smart Shopper] v28 ready.");
 })();
