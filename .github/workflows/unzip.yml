@@ -20,7 +20,7 @@ jobs:
           for file in *.zip; do
             if [ -f "$file" ]; then
               echo "جاري فك ضغط الملف: $file"
-              unzip -o "$file" /
+              unzip -o "$file" 
             fi
           done
 
