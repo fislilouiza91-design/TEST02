@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════════════════
-   Smart Shopper — Content Script (v39)
-   STRICT model match + unique sellers only.
+   Smart Shopper — Content Script (v40)
+   Uses /api/find-same endpoint (multi-search).
    ═══════════════════════════════════════════════════════ */
 
 (function () {
@@ -13,7 +13,7 @@
   const LANG = typeof SS_LANG !== "undefined" ? SS_LANG : "en";
   const IS_RTL = typeof SS_RTL !== "undefined" ? SS_RTL : false;
 
-  console.log(`[Smart Shopper] v39 STRICT-MODEL | Lang: ${LANG}`);
+  console.log(`[Smart Shopper] v40 | Lang: ${LANG}`);
 
   const PANEL_ID = "ss-floating-panel";
   const WORKER_URL = "https://cold-art-c5df.fislilouiza91.workers.dev";
@@ -176,6 +176,23 @@
     return m ? m[1] : null;
   }
 
+  function getOriginalStore() {
+    const sels = [
+      "[class*='store-info'] [class*='name']",
+      "[class*='seller-name']",
+      ".store-name",
+      "[class*='storeName']",
+    ];
+    for (const sel of sels) {
+      const el = document.querySelector(sel);
+      if (el) {
+        const t = el.innerText?.trim();
+        if (t && t.length > 2 && t.length < 60) return t;
+      }
+    }
+    return "";
+  }
+
   function extractProduct() {
     return {
       id: getProductId(),
@@ -185,12 +202,13 @@
       currency: detectCurrency(),
       sold: getSold(),
       rating: getRating(),
+      store: getOriginalStore(),
       url: location.href.split("?")[0],
     };
   }
 
   // ═══════════════════════════════════════════════════════
-  // ⭐ STRICT MODEL EXTRACTION
+  // KEYWORDS & MATCHING
   // ═══════════════════════════════════════════════════════
 
   const STOP_WORDS = new Set([
@@ -223,38 +241,25 @@
     return "";
   }
 
-  /**
-   * ⭐ استخراج الموديلات: EQ5, EQ38, X21
-   * الشرط: 2-5 حروف + 1-5 أرقام (أو العكس)
-   */
   function extractModels(title) {
     if (!title) return [];
     const set = new Set();
-    // EQ5, EQ38, F80, X21
     let m = title.match(/\b[A-Z]{2,5}\d{1,5}\b/g) || [];
     m.forEach(x => set.add(x.toUpperCase()));
-    // 5G, 5.3, 3.0
     m = title.match(/\b\d{1,3}[A-Z]{2,5}\b/g) || [];
     m.forEach(x => set.add(x.toUpperCase()));
-    // أرقام معطرة: 5.3, 4.0
-    m = title.match(/\b\d\.\d\b/g) || [];
-    m.forEach(x => set.add(x));
-    return Array.from(set).slice(0, 8);
+    return Array.from(set);
   }
 
-  /**
-   * ⭐ الموديل الأساسي (الأهم): أول موديل معقد
-   */
   function getPrimaryModel(title) {
     const models = extractModels(title);
-    // الأول من نوع EQ5 / EQ38 / F80
     for (const m of models) {
       if (/^[A-Z]{2,5}\d{1,5}$/.test(m)) return m;
     }
     return models[0] || "";
   }
 
-  function countMatches(text, kw) {
+  function countKeywords(text, kw) {
     if (!text || !kw.length) return 0;
     const set = new Set(getKeywords(text));
     let c = 0;
@@ -262,49 +267,49 @@
     return c;
   }
 
-  function countModelMatches(text, models) {
-    if (!text || !models.length) return 0;
-    const upper = text.toUpperCase();
-    let c = 0;
-    for (const m of models) if (upper.includes(m)) c++;
-    return c;
-  }
+  // ═══════════════════════════════════════════════════════
+  // BUILD SEARCH QUERIES
+  // ═══════════════════════════════════════════════════════
 
   function buildSearchQueries(title) {
     const brand = extractBrand(title);
     const primaryModel = getPrimaryModel(title);
+    const kws = getKeywords(title);
     const queries = new Set();
 
-    // 1) brand + primary model (الأهم)
+    // 1) brand + primary model (الأولوية)
     if (brand && primaryModel) queries.add(`${brand} ${primaryModel}`);
 
     // 2) primary model alone
     if (primaryModel) queries.add(primaryModel);
 
-    // 3) brand + 2 keywords
-    const kws = getKeywords(title);
-    if (brand && kws.length >= 2) queries.add(`${brand} ${kws.slice(0, 2).join(" ")}`);
+    // 3) brand + first 2 keywords
+    if (brand && kws.length >= 2) queries.add(`${brand} ${kws[0]} ${kws[1]}`);
 
-    return Array.from(queries).slice(0, 3);
+    // 4) brand + first keyword
+    if (brand && kws.length >= 1) queries.add(`${brand} ${kws[0]}`);
+
+    return Array.from(queries).slice(0, 4);
   }
 
-  async function searchProducts(keyword) {
-    const res = await fetch(`${WORKER_URL}/api/search`, {
+  // ═══════════════════════════════════════════════════════
+  // FETCH FROM WORKER
+  // ═══════════════════════════════════════════════════════
+
+  async function fetchFindSame(queries) {
+    const res = await fetch(`${WORKER_URL}/api/find-same`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ keyword, pageSize: 50 }),
+      body: JSON.stringify({ keywords: queries, pageSize: 50 }),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const payload = await res.json();
     if (!payload.ok) throw new Error(payload.error || "API error");
-
-    const resp = payload.data?.aliexpress_affiliate_product_query_response;
-    const products = resp?.resp_result?.result?.products?.product || [];
-    return Array.isArray(products) ? products : [products];
+    return payload.data;
   }
 
   // ═══════════════════════════════════════════════════════
-  // ⭐ STRICT FILTER — Model must match!
+  // FILTER & MAP
   // ═══════════════════════════════════════════════════════
 
   function mapAndFilter(p, ctx, seenIds, seenStores) {
@@ -319,38 +324,34 @@
     if (id === ctx.productId) return null;
     if (seenIds.has(id)) return null;
 
-    // ⭐ فلتر 1: نفس المتجر → رفض (نريد بائعين مختلفين)
+    // ⭐ استبعاد المتجر الأصلي
     if (store && ctx.originalStore && store.toLowerCase() === ctx.originalStore.toLowerCase()) {
-      console.log(`[Smart Shopper] ❌ Same store: "${store}"`);
+      console.log(`[Smart Shopper] ❌ Same store as original: "${store}"`);
       return null;
     }
 
-    // ⭐ فلتر 2: الموديل الأساسي يجب أن يكون موجوداً
+    // ⭐ الموديل الأساسي إلزامي
     const titleUpper = title.toUpperCase();
-    const primaryModelMatch = ctx.primaryModel && titleUpper.includes(ctx.primaryModel);
-    const anyModelMatch = ctx.models.length > 0 && countModelMatches(title, ctx.models) >= 1;
+    const hasPrimaryModel = ctx.primaryModel && titleUpper.includes(ctx.primaryModel);
 
-    if (ctx.primaryModel && !primaryModelMatch) {
-      // ⭐ لا يوجد الموديل الأساسي → رفض (إلا إذا كان model آخر)
-      if (!anyModelMatch) {
-        console.log(`[Smart Shopper] ❌ No model "${ctx.primaryModel}": "${title.slice(0, 40)}"`);
-        return null;
-      }
-    }
-
-    // ⭐ فلتر 3: نفس الماركة
+    // ⭐ أو ماركة + 1 model
     const cardBrand = extractBrand(title);
     const brandMatch = ctx.brand && cardBrand && ctx.brand === cardBrand;
-    if (!brandMatch && !primaryModelMatch) {
-      console.log(`[Smart Shopper] ❌ No brand match: "${title.slice(0, 40)}"`);
+    const cardModels = extractModels(title);
+    const modelMatch = cardModels.some(m => ctx.models.includes(m));
+
+    // القبول: (primary model) OR (brand AND model)
+    const passes = hasPrimaryModel || (brandMatch && modelMatch);
+    if (!passes) {
+      console.log(`[Smart Shopper] ❌ No strict match: "${title.slice(0, 40)}"`);
       return null;
     }
 
-    // ⭐ فلتر 4: السعر 20% - 500%
+    // ⭐ السعر 20% - 500%
     if (ctx.referencePrice > 0) {
       const ratio = price / ctx.referencePrice;
       if (ratio < 0.2 || ratio > 5.0) {
-        console.log(`[Smart Shopper] ❌ Price $${price} (ratio ${ratio.toFixed(2)})`);
+        console.log(`[Smart Shopper] ❌ Price out: $${price}`);
         return null;
       }
     }
@@ -364,17 +365,16 @@
 
     const finalOld = (oldP > price && price > 0) ? oldP : 0;
     const discount = finalOld > 0 ? Math.round((1 - price / finalOld) * 100) : 0;
-    const kwMatches = countMatches(title, ctx.keywords);
+    const kwMatches = countKeywords(title, ctx.keywords);
 
-    // ⭐ النقاط
     const score =
-      (primaryModelMatch ? 50 : 0) +
+      (hasPrimaryModel ? 50 : 0) +
       (brandMatch ? 30 : 0) +
+      (modelMatch ? 15 : 0) +
       Math.min(kwMatches * 5, 20);
 
     seenIds.add(id);
-
-    console.log(`[Smart Shopper] ✅ "${title.slice(0, 50)}" (store: ${store}, score: ${score})`);
+    console.log(`[Smart Shopper] ✅ "${title.slice(0, 45)}" (${store}) score:${score}`);
 
     return {
       store: store || "AliExpress Seller",
@@ -387,9 +387,8 @@
       link: p.promotion_link || p.product_detail_url || "",
       title,
       similarity: Math.min(score, 100),
-      primaryModelMatch,
+      hasPrimaryModel,
       brandMatch,
-      kwMatches,
     };
   }
 
@@ -427,9 +426,9 @@
           </div>
         </div>
         <div class="ss-header-actions">
-          <button class="ss-btn-icon" data-action="refresh" title="Rescan">↻</button>
-          <button class="ss-btn-icon" data-action="minimize" title="Minimize">−</button>
-          <button class="ss-btn-icon" data-action="close" title="Close">×</button>
+          <button class="ss-btn-icon" data-action="refresh">↻</button>
+          <button class="ss-btn-icon" data-action="minimize">−</button>
+          <button class="ss-btn-icon" data-action="close">×</button>
         </div>
       </div>
       <div class="ss-current">
@@ -482,14 +481,9 @@
       const models = extractModels(currentProduct.title);
       const keywords = getKeywords(currentProduct.title);
       const referencePrice = currentProduct.price;
-
-      // ⭐ استخراج اسم المتجر الأصلي
-      let originalStore = "";
-      const storeEl = document.querySelector("[class*='store-name'], [class*='seller-name'], [class*='storeName']");
-      if (storeEl) originalStore = storeEl.innerText.trim();
+      const originalStore = currentProduct.store || "";
 
       console.log("═══════════════════════════════════════════");
-      console.log("[Smart Shopper] v39 STRICT MODEL");
       console.log("[Smart Shopper] Product:", currentProduct.title.slice(0, 60));
       console.log("[Smart Shopper] Brand:", brand);
       console.log("[Smart Shopper] Primary Model:", primaryModel);
@@ -497,15 +491,18 @@
       console.log("[Smart Shopper] Original Store:", originalStore);
       console.log("═══════════════════════════════════════════");
 
-      if (!primaryModel) {
-        console.log("[Smart Shopper] ⚠️ No model found → cannot search");
+      const queries = buildSearchQueries(currentProduct.title);
+      console.log("[Smart Shopper] Queries:", queries);
+
+      if (!queries.length) {
         sellers = [];
         renderEmpty();
         return;
       }
 
-      const queries = buildSearchQueries(currentProduct.title);
-      console.log("[Smart Shopper] Queries:", queries);
+      const data = await fetchFindSame(queries);
+      const raw = data?.products || [];
+      console.log(`[Smart Shopper] Worker returned: ${raw.length} unique`);
 
       const ctx = {
         productId: currentProduct.id,
@@ -519,26 +516,16 @@
 
       const seenIds = new Set();
       const seenStores = new Set();
-      const allResults = [];
+      const filtered = [];
 
-      for (const q of queries) {
-        try {
-          console.log(`[Smart Shopper] 🔎 "${q}"`);
-          const raw = await searchProducts(q);
-          console.log(`[Smart Shopper]   → ${raw.length} raw`);
-
-          for (const p of raw) {
-            const mapped = mapAndFilter(p, ctx, seenIds, seenStores);
-            if (mapped) allResults.push(mapped);
-          }
-        } catch (e) {
-          console.warn(`[Smart Shopper] Query failed: "${q}"`, e.message);
-        }
+      for (const p of raw) {
+        const m = mapAndFilter(p, ctx, seenIds, seenStores);
+        if (m) filtered.push(m);
       }
 
-      console.log(`[Smart Shopper] ✅ Final: ${allResults.length}`);
+      console.log(`[Smart Shopper] ✅ Final: ${filtered.length}`);
 
-      sellers = rankProducts(allResults);
+      sellers = rankProducts(filtered);
       updateSourceLabel(sellers.length > 0 ? "smart" : "none");
       renderList();
     } catch (e) {
@@ -734,7 +721,8 @@
   async function run() {
     await sleep(800);
     currentProduct = extractProduct();
-    console.log("[Smart Shopper] v39 ready");
+    console.log("[Smart Shopper] v40 ready");
+    console.log("[Smart Shopper] Product:", currentProduct);
     if (!currentProduct.title || currentProduct.title.length < 5) return;
     buildPanel();
     await doScan();
@@ -749,5 +737,5 @@
   });
 
   run();
-  console.log("[Smart Shopper] v39 ready.");
+  console.log("[Smart Shopper] v40 ready.");
 })();
