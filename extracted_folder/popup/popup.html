@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Smart Shopper</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="header">
+    <div class="logo-row">
+      <div class="logo">S</div>
+      <div>
+        <div class="title">Smart Shopper</div>
+        <div class="subtitle" id="status">جاري التحميل...</div>
+      </div>
+    </div>
+    <button id="refresh" class="btn-icon" title="تحديث">↻</button>
+  </div>
+
+  <div class="search-bar">
+    <input type="text" id="searchInput" placeholder="ابحث في المنتجات المحفوظة...">
+  </div>
+
+  <div class="stats" id="stats"></div>
+
+  <div class="products-list" id="productsList">
+    <div class="loading">جاري التحميل...</div>
+  </div>
+
+  <div class="footer">
+    <button id="clearBtn" class="btn-clear">🗑️ مسح الكل</button>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
