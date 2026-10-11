@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════════════════
-   Smart Shopper — Content Script (v26.7)
-   Replace "vs" comparison with competitor's own old price.
+   Smart Shopper — Content Script (v26.8)
+   Compute old price from discount when missing.
    ═══════════════════════════════════════════════════════ */
 
 (function () {
@@ -13,7 +13,7 @@
   const LANG = typeof SS_LANG !== "undefined" ? SS_LANG : "en";
   const IS_RTL = typeof SS_RTL !== "undefined" ? SS_RTL : false;
 
-  console.log(`[Smart Shopper] v26.7 | Lang: ${LANG}`);
+  console.log(`[Smart Shopper] v26.8 | Lang: ${LANG}`);
 
   const PANEL_ID = "ss-floating-panel";
   const WORKER_URL = "https://cold-art-c5df.fislilouiza91.workers.dev";
@@ -263,14 +263,20 @@
   function mapSmartMatchProduct(p) {
     const price = parseFloat(p.target_sale_price || p.sale_price || 0);
     const oldP = parseFloat(p.target_original_price || p.original_price || 0);
-    const discount = oldP > price && price > 0 ? Math.round((1 - price / oldP) * 100) : 0;
+    let discount = oldP > price && price > 0 ? Math.round((1 - price / oldP) * 100) : 0;
     const rating = parseFloat(String(p.evaluate_rate || "0").replace("%", "")) / 20;
+
+    // ⭐ إذا لا يوجد oldPrice لكن يوجد خصم → احسبه
+    let finalOld = oldP;
+    if ((!finalOld || finalOld <= price) && discount > 0 && price > 0) {
+      finalOld = Math.round(price / (1 - discount / 100) * 100) / 100;
+    }
 
     return {
       store: p.shop_name || p.store_name || "AliExpress Seller",
       img: p.product_main_image_url || "",
       price,
-      oldPrice: oldP,
+      oldPrice: finalOld > price ? finalOld : 0,
       discount,
       rating: rating > 0 && rating <= 5 ? +rating.toFixed(1) : 0,
       sold: parseInt(p.lastest_volume || p.volume || 0, 10),
@@ -377,6 +383,7 @@
 
     current = applyWelcomeDeal(current, card);
 
+    // نسبة الخصم
     let discount = 0;
     const dMatch = txt.match(/[-−]\s*(\d{1,2})\s*%/);
     if (dMatch) {
@@ -386,6 +393,11 @@
 
     if (old > 0 && old <= current) old = 0;
     if (!discount && old > current && current > 0) discount = Math.round((1 - current / old) * 100);
+
+    // ⭐ الحل: إذا لا يوجد oldPrice لكن يوجد خصم → احسبه
+    if ((!old || old <= current) && discount > 0 && current > 0) {
+      old = Math.round(current / (1 - discount / 100) * 100) / 100;
+    }
 
     return { price: current, oldPrice: old, discount };
   }
@@ -712,9 +724,9 @@
       else if (activeFilter === "best" && rank === 1) tag = `<span class="ss-tag ss-best">${T("bestValueTag")}</span>`;
       else if (isCheap) tag = `<span class="ss-tag ss-cheap">${T("bestPrice")}</span>`;
 
-      // ⭐ السعر القديم للمنتج نفسه (مشطوب)
-      const oldPriceHtml = s.oldPrice > 0
-        ? `<span class="ss-old-price">${formatPrice(s.oldPrice, currentProduct.currency)}</span>`
+      // ⭐ السعر القديم (المحسوب من الخصم أو المستخرج)
+      const oldPriceHtml = s.oldPrice > 0 && s.oldPrice > s.price
+        ? `<div class="ss-old-line"><span class="ss-old-price">${formatPrice(s.oldPrice, currentProduct.currency)}</span></div>`
         : "";
 
       const discountBadge = s.discount > 0 ? `<span class="ss-discount">-${s.discount}%</span>` : "";
@@ -740,7 +752,7 @@
               <span class="ss-price-now">${formatPrice(s.price, currentProduct.currency)}</span>
               ${discountBadge}
             </div>
-            ${oldPriceHtml ? `<div class="ss-old-line">${oldPriceHtml}</div>` : ""}
+            ${oldPriceHtml}
           </div>
         </div>
       `;
@@ -796,7 +808,7 @@
   async function run() {
     await sleep(1500);
     currentProduct = extractProduct();
-    console.log("[Smart Shopper] v26.7 — Own old price");
+    console.log("[Smart Shopper] v26.8 — Compute old price");
     console.log("[Smart Shopper] Product:", currentProduct);
     if (!currentProduct.title || currentProduct.title.length < 5) return;
     buildPanel();
@@ -812,5 +824,5 @@
   });
 
   run();
-  console.log("[Smart Shopper] v26.7 ready.");
+  console.log("[Smart Shopper] v26.8 ready.");
 })();
