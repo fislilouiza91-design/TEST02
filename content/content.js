@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════════════════
-   Smart Shopper — Content Script (v26.4)
-   Default sort: CHEAPEST FIRST.
+   Smart Shopper — Content Script (v26.5)
+   Fixed: welcome deal price (base - save).
    ═══════════════════════════════════════════════════════ */
 
 (function () {
@@ -13,14 +13,14 @@
   const LANG = typeof SS_LANG !== "undefined" ? SS_LANG : "en";
   const IS_RTL = typeof SS_RTL !== "undefined" ? SS_RTL : false;
 
-  console.log(`[Smart Shopper] v26.4 | Lang: ${LANG}`);
+  console.log(`[Smart Shopper] v26.5 | Lang: ${LANG}`);
 
   const PANEL_ID = "ss-floating-panel";
   const WORKER_URL = "https://cold-art-c5df.fislilouiza91.workers.dev";
 
   let currentProduct = null;
   let sellers = [];
-  let activeFilter = "cheap"; // ⭐ CHEAPEST BY DEFAULT
+  let activeFilter = "cheap";
   let minimized = false;
   let isScanning = false;
 
@@ -74,7 +74,39 @@
 
   function isExcludedContext(text) {
     if (!text) return true;
-    return /(\boff\s+on\b|\boff\s+us\b|save\s+\$|saving|coupon|voucher|reduction|with\s+coins|extra\s+\d+\s*%|installment|x\s*\$|×\s*\$|pieces|pcs|piece|bulk|wholesale|minimum|per\s+piece|\d+\s*\+|exclusive\s+offer|buy\s+now\s+pay|tax\s+excl)/i.test(text);
+    return /(\boff\s+on\b|\boff\s+us\b|coupon|voucher|reduction|with\s+coins|extra\s+\d+\s*%|installment|x\s*\$|×\s*\$|pieces|pcs|piece|bulk|wholesale|minimum|per\s+piece|\d+\s*\+|buy\s+now\s+pay|tax\s+excl)/i.test(text);
+  }
+
+  // ═══════════════════════════════════════════════════════
+  // ⭐ WELCOME DEAL DETECTION
+  // إذا وُجد "save $X" أو "New shoppers save $X" → اطرحه من السعر
+  // ═══════════════════════════════════════════════════════
+
+  function applyWelcomeDeal(price, rootEl) {
+    if (!price || !rootEl) return price;
+    const txt = rootEl.innerText || "";
+
+    // Pattern 1: "New shoppers save $X.XX"
+    let m = txt.match(/new\s+shoppers?\s+save\s+\$?\s*([\d.,]+)/i);
+    if (m) {
+      const save = parseFloat(m[1].replace(",", "."));
+      if (save > 0 && save < price) {
+        console.log(`[Smart Shopper] Welcome deal: $${price} - $${save} = $${price - save}`);
+        return Math.round((price - save) * 100) / 100;
+      }
+    }
+
+    // Pattern 2: "Save $X.XX" عام
+    m = txt.match(/\bsave\s+\$?\s*([\d.,]+)/i);
+    if (m) {
+      const save = parseFloat(m[1].replace(",", "."));
+      if (save > 0 && save < price) {
+        console.log(`[Smart Shopper] Save: $${price} - $${save} = $${price - save}`);
+        return Math.round((price - save) * 100) / 100;
+      }
+    }
+
+    return price;
   }
 
   // ═══════════════════════════════════════════════════════
@@ -132,33 +164,52 @@
   }
 
   function getPrice() {
+    // 1. Meta tag
     const meta = document.querySelector("meta[property='product:price:amount']");
     if (meta) {
       const v = parseFloat(meta.getAttribute("content"));
       if (v > 0.5) return v;
     }
+
+    // 2. Find the biggest price near the title (real price = largest font)
     const priceEls = document.querySelectorAll("[class*='price'], [class*='Price']");
     const candidates = [];
     for (const el of priceEls) {
       const cls = (el.className || "").toString().toLowerCase();
       const style = (el.getAttribute("style") || "").toLowerCase();
+      // Skip old/crossed/coupon
       if (/(old|origin|del|through|cross|before|strike|coupon|off|save|discount|reduce|promo|voucher|bulk|wholesale|minimum|tier)/i.test(cls)) continue;
       if (/line-through/.test(style)) continue;
+
       const txt = (el.innerText || "").trim();
       if (!txt || isExcludedContext(txt)) continue;
+
       const nums = extractNumbers(txt);
       if (!nums.length || nums[0].value < 3) continue;
-      const isCurrent = /(current|sale|now|main|primary)/i.test(cls);
+
+      const isCurrent = /(current|sale|now|main|primary|big|large)/i.test(cls);
       const fontSize = parseFloat(window.getComputedStyle(el).fontSize) || 12;
-      candidates.push({ value: nums[0].value, isCurrent, fontSize });
+
+      candidates.push({ value: nums[0].value, isCurrent, fontSize, el });
     }
+
     if (candidates.length) {
+      // ⭐ ترتيب: أولاً current/sale، ثم الأكبر خطاً (السعر الرئيسي)
       candidates.sort((a, b) => {
         if (a.isCurrent !== b.isCurrent) return a.isCurrent ? -1 : 1;
         return b.fontSize - a.fontSize;
       });
-      return candidates[0].value;
+
+      let basePrice = candidates[0].value;
+
+      // ⭐ تطبيق خصم Welcome Deal
+      const container = candidates[0].el.closest("[class*='product'], [class*='pdp'], [class*='detail']") || document.body;
+      basePrice = applyWelcomeDeal(basePrice, container);
+
+      return basePrice;
     }
+
+    // 3. Fallback: near title
     const h1 = document.querySelector("h1[data-pl='product-title'], .product-title-text, h1.product-title");
     if (h1) {
       let node = h1;
@@ -176,10 +227,13 @@
           });
         if (nums.length) {
           nums.sort((a, b) => b.value - a.value);
-          return nums[0].value;
+          let basePrice = nums[0].value;
+          basePrice = applyWelcomeDeal(basePrice, node);
+          return basePrice;
         }
       }
     }
+
     return null;
   }
 
@@ -322,16 +376,8 @@
       const h = img.naturalHeight || img.height || 0;
       if (w > 0 && w < 80) continue;
       if (h > 0 && h < 80) continue;
-
       const src = getImgSrc(img);
       if (src) return src;
-    }
-    const bgEls = card.querySelectorAll("[style*='background-image']");
-    for (const el of bgEls) {
-      const m = (el.getAttribute("style") || "").match(/url\(["']?([^"')]+)["']?\)/);
-      if (m && m[1].startsWith("http") && !isBadImage(m[1])) {
-        return m[1].startsWith("//") ? "https:" + m[1] : m[1];
-      }
     }
     return "";
   }
@@ -387,6 +433,9 @@
         current = parsed[0];
       }
     }
+
+    // ⭐ خصم Welcome
+    current = applyWelcomeDeal(current, card);
 
     let discount = 0;
     const dMatch = txt.match(/[-−]\s*(\d{1,2})\s*%/);
@@ -510,10 +559,7 @@
         if (!card) continue;
 
         const img = extractRealImage(card);
-        if (!img) {
-          console.log(`[Smart Shopper] No image for: ${href.slice(-20)}`);
-          continue;
-        }
+        if (!img) continue;
 
         const priceInfo = parseCardPrice(card);
         if (!priceInfo.price) continue;
@@ -862,7 +908,7 @@
     await sleep(1500);
     currentProduct = extractProduct();
     console.log("[Smart Shopper] ════════════════════════════════");
-    console.log("[Smart Shopper] v26.4 — Cheapest First");
+    console.log("[Smart Shopper] v26.5 — Welcome Deal Fix");
     console.log("[Smart Shopper] Worker:", WORKER_URL);
     console.log("[Smart Shopper] Product:", currentProduct);
     console.log("[Smart Shopper] ════════════════════════════════");
@@ -881,5 +927,5 @@
   });
 
   run();
-  console.log("[Smart Shopper] v26.4 ready.");
+  console.log("[Smart Shopper] v26.5 ready.");
 })();
