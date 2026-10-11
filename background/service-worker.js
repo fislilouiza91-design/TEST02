@@ -1,10 +1,8 @@
 /* ═══════════════════════════════════════════════════════
    Smart Shopper — Background Service Worker
-   Holds the last detected product per tab.
-   (الإرسال للـ Neon يتم من content.js مباشرة)
    ═══════════════════════════════════════════════════════ */
 
-const tabProducts = new Map(); // tabId -> product
+const tabProducts = new Map();
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   const tabId = sender.tab?.id;
@@ -31,9 +29,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             tabProducts.set(tab.id, res.product);
             return sendResponse(res);
           }
-          return sendResponse({ ok: false, error: res?.error || "Not on AliExpress product page" });
+          return sendResponse({ ok: false, error: "Not on AliExpress product page" });
         } catch (e) {
-          return sendResponse({ ok: false, error: "Content script not available on this page" });
+          return sendResponse({ ok: false, error: "Content script not available" });
         }
       } catch (e) {
         sendResponse({ ok: false, error: String(e) });
