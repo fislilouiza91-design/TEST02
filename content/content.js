@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════════════════
-   Smart Shopper — Content Script (v26.9)
-   NO fake computed prices. Show only real data.
+   Smart Shopper — Content Script (v26.6 FINAL)
+   Smart Match + Welcome Deal + Honest prices only.
    ═══════════════════════════════════════════════════════ */
 
 (function () {
@@ -13,7 +13,7 @@
   const LANG = typeof SS_LANG !== "undefined" ? SS_LANG : "en";
   const IS_RTL = typeof SS_RTL !== "undefined" ? SS_RTL : false;
 
-  console.log(`[Smart Shopper] v26.9 | Lang: ${LANG}`);
+  console.log(`[Smart Shopper] v26.6 | Lang: ${LANG}`);
 
   const PANEL_ID = "ss-floating-panel";
   const WORKER_URL = "https://cold-art-c5df.fislilouiza91.workers.dev";
@@ -220,6 +220,8 @@
   // ═══════════════════════════════════════════════════════
 
   async function fetchSmartMatch(product) {
+    console.log(`[Smart Shopper] Smart Match for: ${product.id}`);
+
     const bodies = [];
     if (product.id) bodies.push({ productId: product.id });
     if (product.image) bodies.push({ imageUrl: product.image });
@@ -228,6 +230,8 @@
     for (const body of bodies) {
       try {
         const key = Object.keys(body)[0];
+        console.log(`[Smart Shopper] Trying: ${key}`);
+
         const res = await fetch(`${WORKER_URL}/api/smart-match`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -260,7 +264,6 @@
     const oldP = parseFloat(p.target_original_price || p.original_price || 0);
     const rating = parseFloat(String(p.evaluate_rate || "0").replace("%", "")) / 20;
 
-    // ⭐ فقط إن كان السعر القديم موجود فعلاً
     const finalOld = (oldP > price && price > 0) ? oldP : 0;
     const discount = finalOld > 0 ? Math.round((1 - price / finalOld) * 100) : 0;
 
@@ -327,14 +330,13 @@
   }
 
   // ═══════════════════════════════════════════════════════
-  // ⭐ CARD PARSING — No fake computations
+  // CARD PARSING
   // ═══════════════════════════════════════════════════════
 
   function parseCardPrice(card) {
     const txt = card.innerText || "";
     let current = 0, old = 0;
 
-    // استخرج السعر الحالي والقديم من class-based elements
     const priceEls = card.querySelectorAll("[class*='price'], [class*='Price']");
     for (const el of priceEls) {
       const cls = (el.className || "").toString().toLowerCase();
@@ -367,7 +369,6 @@
 
     current = applyWelcomeDeal(current, card);
 
-    // نسبة الخصم من النص
     let discount = 0;
     const dMatch = txt.match(/[-−]\s*(\d{1,2})\s*%/);
     if (dMatch) {
@@ -375,10 +376,9 @@
       if (d >= 5 && d <= 90) discount = d;
     }
 
-    // ⭐ إذا السعر القديم <= السعر الحالي → غير صالح
     if (old > 0 && old <= current) old = 0;
+    if (!discount && old > current && current > 0) discount = Math.round((1 - current / old) * 100);
 
-    // ⭐ لا نحسب السعر القديم رياضياً — فقط نحفظ الخصم كما هو
     return { price: current, oldPrice: old, discount };
   }
 
@@ -598,17 +598,21 @@
     renderLoading();
 
     try {
+      console.log("[Smart Shopper] ═══ STEP 1: Smart Match ═══");
       const smart = await fetchSmartMatch(currentProduct);
       if (smart.ok && smart.products.length > 0) {
         sellers = rankProducts(smart.products.map(mapSmartMatchProduct));
+        console.log(`[Smart Shopper] ✅ Smart Match: ${sellers.length}`);
         updateSourceLabel("smart");
         renderList();
         return;
       }
+      console.log("[Smart Shopper] ═══ STEP 2: Page fallback ═══");
       const currentKeywords = getKeywords(currentProduct.title);
       await autoScroll();
       const candidates = scrapePage(currentKeywords);
       sellers = rankProducts(candidates);
+      console.log(`[Smart Shopper] Page fallback: ${sellers.length}`);
       updateSourceLabel("page");
       renderList();
     } catch (e) {
@@ -704,7 +708,6 @@
       else if (activeFilter === "best" && rank === 1) tag = `<span class="ss-tag ss-best">${T("bestValueTag")}</span>`;
       else if (isCheap) tag = `<span class="ss-tag ss-cheap">${T("bestPrice")}</span>`;
 
-      // ⭐ السعر القديم: فقط إذا حقيقي
       const oldPriceHtml = s.oldPrice > 0 && s.oldPrice > s.price
         ? `<div class="ss-old-line"><span class="ss-old-price">${formatPrice(s.oldPrice, currentProduct.currency)}</span></div>`
         : "";
@@ -788,8 +791,12 @@
   async function run() {
     await sleep(1500);
     currentProduct = extractProduct();
-    console.log("[Smart Shopper] v26.9 — Honest prices only");
+    console.log("[Smart Shopper] ════════════════════════════════");
+    console.log("[Smart Shopper] v26.6 FINAL — Smart Match");
+    console.log("[Smart Shopper] Worker:", WORKER_URL);
     console.log("[Smart Shopper] Product:", currentProduct);
+    console.log("[Smart Shopper] ════════════════════════════════");
+
     if (!currentProduct.title || currentProduct.title.length < 5) return;
     buildPanel();
     await doScan();
@@ -804,5 +811,5 @@
   });
 
   run();
-  console.log("[Smart Shopper] v26.9 ready.");
+  console.log("[Smart Shopper] v26.6 ready.");
 })();
