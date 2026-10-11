@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════════════════
-   Smart Shopper — Content Script (v44 ULTIMATE)
-   Multi-image hash + Category + Fuzzy match + Cache.
+   Smart Shopper — Content Script (v45 COGNITIVE)
+   14-layer analysis + 30 queries + semantic matching.
    ═══════════════════════════════════════════════════════ */
 
 (function () {
@@ -10,14 +10,13 @@
   window.__SMART_SHOPPER_LOADED__ = true;
 
   const T = typeof SS_T === "function" ? SS_T : (k) => k;
-  const LANG = typeof SS_LANG !== "undefined" ? SS_LANG : "en";
   const IS_RTL = typeof SS_RTL !== "undefined" ? SS_RTL : false;
 
-  console.log(`[Smart Shopper] v44 ULTIMATE | Lang: ${LANG}`);
+  console.log(`[Smart Shopper] v45 COGNITIVE`);
 
   const PANEL_ID = "ss-floating-panel";
   const WORKER_URL = "https://cold-art-c5df.fislilouiza91.workers.dev";
-  const LOCAL_CACHE_TTL = 30 * 60 * 1000; // 30 دقيقة
+  const CACHE_TTL = 30 * 60 * 1000;
 
   let currentProduct = null;
   let sellers = [];
@@ -99,39 +98,22 @@
     } catch (_) { return ""; }
   }
 
-  /**
-   * ⭐⭐ استخراج كل صور المنتج (10 صور)
-   */
   function getAllImageHashes() {
     const hashes = new Set();
-
-    // من meta
     const og = document.querySelector("meta[property='og:image']")?.getAttribute("content");
     if (og) {
       const h = extractImageHash(og);
       if (h) hashes.add(h);
     }
-
-    // من الصور في الصفحة (thumbnails)
     const imgs = document.querySelectorAll(
-      "[class*='image-view'] img, [class*='thumb'] img, [class*='magnifier'] img, [class*='gallery'] img"
+      "[class*='image-view'] img, [class*='thumb'] img, [class*='magnifier'] img, [class*='gallery'] img, img[src*='alicdn.com/kf/']"
     );
     for (const img of imgs) {
+      if (hashes.size >= 12) break;
       const src = img.src || img.getAttribute("data-src") || img.getAttribute("data-large") || "";
       const h = extractImageHash(src);
       if (h) hashes.add(h);
-      if (hashes.size >= 10) break;
     }
-
-    // من صور بجانب العنوان
-    const altImgs = document.querySelectorAll("img[src*='alicdn.com/kf/']");
-    for (const img of altImgs) {
-      if (hashes.size >= 10) break;
-      const src = img.src || "";
-      const h = extractImageHash(src);
-      if (h) hashes.add(h);
-    }
-
     return Array.from(hashes);
   }
 
@@ -245,11 +227,7 @@
     return "";
   }
 
-  /**
-   * ⭐ استخراج تصنيف المنتج من breadcrumbs
-   */
   function getCategory() {
-    // AliExpress breadcrumb selectors
     const sels = [
       ".breadcrumb a",
       "[class*='breadcrumb'] a",
@@ -272,16 +250,12 @@
     return parts.join(" > ");
   }
 
-  /**
-   * ⭐ كشف نوع المنتج (للأسعار المخصصة)
-   */
   function detectProductType(title) {
     const t = (title || "").toLowerCase();
-
-    if (/\b(perfume|parfum|fragrance|عطر|parfum|тоалетн)\b/i.test(t)) return "perfume";
-    if (/\b(headphone|earphone|earbud|headset|سماع|écouteur|earbuds)\b/i.test(t)) return "headphones";
+    if (/\b(perfume|parfum|fragrance|عطر|тоалетн)\b/i.test(t)) return "perfume";
+    if (/\b(headphone|earphone|earbud|headset|سماع|écouteur)\b/i.test(t)) return "headphones";
     if (/\b(phone|smartphone|mobile|هاتف|téléphone)\b/i.test(t)) return "phone";
-    if (/\b(laptop|notebook|كمبيوتر|ordinateur|computer)\b/i.test(t)) return "laptop";
+    if (/\b(laptop|notebook|ordinateur|computer)\b/i.test(t)) return "laptop";
     if (/\b(watch|smartwatch|ساعة|montre)\b/i.test(t)) return "watch";
     if (/\b(charger|cable|شاحن|câble)\b/i.test(t)) return "charger";
     if (/\b(usb|flash drive|pendrive|memory card)\b/i.test(t)) return "storage";
@@ -293,7 +267,8 @@
     if (/\b(tool|أدوات|outil)\b/i.test(t)) return "tool";
     if (/\b(lamp|light|مصباح|lampe)\b/i.test(t)) return "lighting";
     if (/\b(fishing|صيد|pêche)\b/i.test(t)) return "fishing";
-
+    if (/\b(glass|glasses|نظار)\b/i.test(t)) return "glasses";
+    if (/\b(case|cover|حافظة|coque)\b/i.test(t)) return "case";
     return "general";
   }
 
@@ -305,7 +280,7 @@
       title,
       image: img,
       imageHash: extractImageHash(img),
-      imageHashes: getAllImageHashes(), // ⭐ كل الصور
+      imageHashes: getAllImageHashes(),
       price: getPrice(),
       currency: detectCurrency(),
       sold: getSold(),
@@ -318,38 +293,136 @@
   }
 
   // ═══════════════════════════════════════════════════════
-  // ⭐ FUZZY MATCHING
+  // ⭐⭐⭐ TEXT ANALYSIS (14 طبقة)
   // ═══════════════════════════════════════════════════════
 
-  /**
-   * تطبيع النص: إزالة الرموز، الألوان، الأحجام
-   */
+  const STOP_WORDS = new Set([
+    "for","with","and","the","a","an","of","to","in","on","at","by","is","are",
+    "original","new","hot","sale","free","shipping","best","top","quality","high",
+    "wholesale","dropshipping","factory","brand","genuine","fast","delivery",
+    "1pc","2pcs","3pcs","pcs","set","pack","style","type","you","your","this","that",
+    "from","into","only","more","all","any","good","great","item","product","pieces",
+    "piece","color","colors","size","sizes","model","series","version",
+    "maximum","minimum","medium","direct","power","strong","small","large",
+    "big","cheap","premium","professional","portable","rechargeable",
+  ]);
+
+  const COLOR_WORDS = new Set([
+    "black","white","red","blue","green","yellow","pink","purple","silver","gold",
+    "gray","grey","brown","orange","cyan","violet","أحمر","أخضر","أزرق","أسود","أبيض",
+    "noir","blanc","rouge","bleu","vert","jaune","rose","violet","gris","marron",
+  ]);
+
+  const SIZE_WORDS = new Set([
+    "xs","s","m","l","xl","xxl","xxxl","small","medium","large","mini","plus","max",
+  ]);
+
+  function getKeywords(title) {
+    if (!title) return [];
+    return title.replace(/[^\p{L}\p{N}\s]/gu, " ").split(/\s+/)
+      .map(w => w.trim().toLowerCase())
+      .filter(w => w.length > 2 && !STOP_WORDS.has(w) && !/^\d+$/.test(w));
+  }
+
+  function getKeywordsNoColor(title) {
+    return getKeywords(title).filter(w => !COLOR_WORDS.has(w) && !SIZE_WORDS.has(w));
+  }
+
+  function extractBrand(title) {
+    if (!title) return "";
+    let m = title.match(/^\s*([A-Z][A-Z0-9]{2,15})\b/);
+    if (m) return m[1].toUpperCase();
+    m = title.match(/^\s*([A-Z][a-z]{2,15})\b/);
+    if (m) return m[1].toUpperCase();
+    m = title.slice(0, 60).match(/\b([A-Z][A-Z0-9]{2,15})\b/);
+    if (m) return m[1].toUpperCase();
+    return "";
+  }
+
+  const COMMON_VERSIONS = new Set([
+    "5.3","5.2","5.1","5.0","4.2","4.1","4.0","3.0","2.0","1.0",
+    "4g","5g","3g","2g",
+    "usb","hdmi","rgb","led","lcd","ip67","ip68","ipx5","ipx7",
+    "anc","tws","hifi","hd","uhd","4k","8k","1080p","720p",
+  ]);
+
+  function extractModels(title) {
+    if (!title) return [];
+    const set = new Set();
+    let m = title.match(/\b[A-Z]{2,5}\d{1,5}\b/g) || [];
+    m.forEach(x => {
+      const up = x.toUpperCase();
+      if (!COMMON_VERSIONS.has(up.toLowerCase())) set.add(up);
+    });
+    m = title.match(/\b\d{1,3}[A-Z]{2,5}\b/g) || [];
+    m.forEach(x => {
+      const up = x.toUpperCase();
+      if (!COMMON_VERSIONS.has(up.toLowerCase())) set.add(up);
+    });
+    return Array.from(set);
+  }
+
+  function getPrimaryModel(title) {
+    const models = extractModels(title);
+    for (const m of models) {
+      if (/^[A-Z]{2,5}\d{1,5}$/.test(m)) return m;
+    }
+    return models[0] || "";
+  }
+
+  // ⭐ Layer 1: Keyword Count
+  function countKeywords(text, kw) {
+    if (!text || !kw.length) return 0;
+    const set = new Set(getKeywords(text));
+    let c = 0;
+    for (const k of kw) if (set.has(k)) c++;
+    return c;
+  }
+
+  // ⭐ Layer 2: Jaccard Similarity
+  function jaccardSimilarity(t1, t2) {
+    const s1 = new Set(getKeywords(t1));
+    const s2 = new Set(getKeywords(t2));
+    if (!s1.size || !s2.size) return 0;
+    const intersection = [...s1].filter(x => s2.has(x)).length;
+    const union = new Set([...s1, ...s2]).size;
+    return union > 0 ? intersection / union : 0;
+  }
+
+  // ⭐ Layer 3: Cosine Similarity (TF-based)
+  function cosineSimilarity(t1, t2) {
+    const w1 = getKeywords(t1);
+    const w2 = getKeywords(t2);
+    if (!w1.length || !w2.length) return 0;
+
+    const tf1 = {}, tf2 = {};
+    w1.forEach(w => tf1[w] = (tf1[w] || 0) + 1);
+    w2.forEach(w => tf2[w] = (tf2[w] || 0) + 1);
+
+    const allWords = new Set([...Object.keys(tf1), ...Object.keys(tf2)]);
+    let dotProduct = 0, mag1 = 0, mag2 = 0;
+
+    allWords.forEach(w => {
+      const a = tf1[w] || 0;
+      const b = tf2[w] || 0;
+      dotProduct += a * b;
+      mag1 += a * a;
+      mag2 += b * b;
+    });
+
+    if (mag1 === 0 || mag2 === 0) return 0;
+    return dotProduct / (Math.sqrt(mag1) * Math.sqrt(mag2));
+  }
+
+  // ⭐ Layer 4: Levenshtein
   function normalizeTitle(title) {
     if (!title) return "";
-    return title
-      .toLowerCase()
-      // إزالة كل شيء غير حروف/أرقام
+    return title.toLowerCase()
       .replace(/[^\p{L}\p{N}\s]/gu, " ")
-      // إزالة الألوان
-      .replace(/\b(black|white|red|blue|green|yellow|pink|purple|silver|gold|gray|grey|brown|أسود|أبيض|أحمر|أزرق|أخضر|أصفر|وردي|بني|noir|blanc|rouge|bleu|vert|jaune|rose|violet|argent|or|gris|marron)\b/gi, "")
-      // إزالة الأحجام
-      .replace(/\b(xs|s|m|l|xl|xxl|xxxl|small|medium|large)\b/gi, "")
-      // مسافات زائدة
       .replace(/\s+/g, " ")
       .trim();
   }
 
-  /**
-   * تطبيع الماركة للمقارنة
-   */
-  function normalizeBrand(brand) {
-    if (!brand) return "";
-    return brand.toLowerCase().replace(/[^a-z0-9]/g, "");
-  }
-
-  /**
-   * ⭐ Levenshtein Distance — تشابه العناوين
-   */
   function levenshtein(a, b) {
     if (!a) return b ? b.length : 0;
     if (!b) return a.length;
@@ -368,7 +441,7 @@
     return tmp[a.length][b.length];
   }
 
-  function titleSimilarity(t1, t2) {
+  function levenshteinSimilarity(t1, t2) {
     const a = normalizeTitle(t1);
     const b = normalizeTitle(t2);
     if (!a || !b) return 0;
@@ -377,88 +450,96 @@
     return Math.max(0, 1 - dist / maxLen);
   }
 
-  // ═══════════════════════════════════════════════════════
-  // KEYWORDS
-  // ═══════════════════════════════════════════════════════
-
-  const STOP_WORDS = new Set([
-    "for","with","and","the","a","an","of","to","in","on","at","by","is","are",
-    "original","new","hot","sale","free","shipping","best","top","quality","high",
-    "wholesale","dropshipping","factory","brand","genuine","fast","delivery",
-    "1pc","2pcs","3pcs","pcs","set","pack","style","type","you","your","this","that",
-    "from","into","only","more","all","any","good","great","item","product","pieces",
-    "piece","color","colors","size","sizes","model","series","version",
-    "maximum","minimum","medium","direct","power","strong","small","large",
-    "big","cheap","premium","professional","portable","rechargeable",
-  ]);
-
-  function getKeywords(title) {
-    if (!title) return [];
-    return title.replace(/[^\p{L}\p{N}\s]/gu, " ").split(/\s+/)
-      .map(w => w.trim())
-      .filter(w => w.length > 2 && !STOP_WORDS.has(w.toLowerCase()) && !/^\d+$/.test(w))
-      .map(w => w.toLowerCase());
-  }
-
-  function extractBrand(title) {
-    if (!title) return "";
-    let m = title.match(/^\s*([A-Z][A-Z0-9]{2,15})\b/);
-    if (m) return m[1].toUpperCase();
-    m = title.match(/^\s*([A-Z][a-z]{2,15})\b/);
-    if (m) return m[1].toUpperCase();
-    m = title.slice(0, 60).match(/\b([A-Z][A-Z0-9]{2,15})\b/);
-    if (m) return m[1].toUpperCase();
-    return "";
-  }
-
-  /**
-   * ⭐ استخراج الموديلات (مع استبعاد النسخ الوهمية)
-   */
-  const COMMON_VERSIONS = new Set([
-    "5.3","5.2","5.1","5.0","4.2","4.1","4.0","3.0","2.0","1.0",
-    "4g","5g","3g","2g",
-    "usb","hdmi","rgb","led","lcd","ip67","ip68","ipx5","ipx7",
-  ]);
-
-  function extractModels(title) {
-    if (!title) return [];
-    const set = new Set();
-
-    // نمط: EQ5, EQ38, F80, X21
-    let m = title.match(/\b[A-Z]{2,5}\d{1,5}\b/g) || [];
-    m.forEach(x => {
-      const up = x.toUpperCase();
-      if (!COMMON_VERSIONS.has(up.toLowerCase())) set.add(up);
-    });
-
-    // نمط: 5G, 4K (لكن استبعد الشائع)
-    m = title.match(/\b\d{1,3}[A-Z]{2,5}\b/g) || [];
-    m.forEach(x => {
-      const up = x.toUpperCase();
-      if (!COMMON_VERSIONS.has(up.toLowerCase())) set.add(up);
-    });
-
-    return Array.from(set);
-  }
-
-  function getPrimaryModel(title) {
-    const models = extractModels(title);
-    for (const m of models) {
-      if (/^[A-Z]{2,5}\d{1,5}$/.test(m)) return m;
+  // ⭐ Layer 5: N-gram Matching
+  function getNgrams(text, n = 2) {
+    const words = getKeywordsNoColor(text);
+    const ngrams = [];
+    for (let i = 0; i <= words.length - n; i++) {
+      ngrams.push(words.slice(i, i + n).join(" "));
     }
-    return models[0] || "";
+    return ngrams;
   }
 
-  function countKeywords(text, kw) {
-    if (!text || !kw.length) return 0;
-    const set = new Set(getKeywords(text));
-    let c = 0;
-    for (const k of kw) if (set.has(k)) c++;
-    return c;
+  function ngramSimilarity(t1, t2) {
+    const ng1 = new Set(getNgrams(t1, 2));
+    const ng2 = new Set(getNgrams(t2, 2));
+    if (!ng1.size || !ng2.size) return 0;
+    const intersection = [...ng1].filter(x => ng2.has(x)).length;
+    return intersection / Math.min(ng1.size, ng2.size);
+  }
+
+  // ⭐ Layer 6: Number Matching
+  function extractCriticalNumbers(text) {
+    if (!text) return [];
+    const nums = text.match(/\b\d{2,5}\b/g) || [];
+    return nums.filter(n => {
+      const v = parseInt(n, 10);
+      return v >= 10 && v <= 99999;
+    });
+  }
+
+  function numberMatch(t1, t2) {
+    const n1 = extractCriticalNumbers(t1);
+    const n2 = extractCriticalNumbers(t2);
+    if (!n1.length) return 0.5; // محايد
+    let matches = 0;
+    for (const n of n1) if (n2.includes(n)) matches++;
+    return matches / n1.length;
+  }
+
+  // ⭐ Layer 7: Brand Fuzzy Match
+  function normalizeBrand(brand) {
+    if (!brand) return "";
+    return brand.toLowerCase().replace(/[^a-z0-9]/g, "");
+  }
+
+  function brandFuzzyMatch(b1, b2) {
+    const n1 = normalizeBrand(b1);
+    const n2 = normalizeBrand(b2);
+    if (!n1 || !n2) return false;
+    if (n1 === n2) return true;
+    if (n1.includes(n2) || n2.includes(n1)) return true;
+    if (levenshtein(n1, n2) <= 2) return true;
+    return false;
+  }
+
+  // ⭐ Layer 8: Category Match
+  function categoryMatch(c1, c2) {
+    if (!c1 || !c2) return 0;
+    const w1 = new Set(c1.split(" > ").map(x => x.trim()).filter(x => x));
+    const w2 = new Set(c2.split(" > ").map(x => x.trim()).filter(x => x));
+    const intersection = [...w1].filter(x => w2.has(x)).length;
+    if (intersection >= 2) return 1;
+    if (intersection === 1) return 0.5;
+    return 0;
+  }
+
+  // ⭐ Layer 9: Type Match
+  function typeMatch(t1, t2) {
+    if (!t1 || !t2) return 0;
+    return t1 === t2 ? 1 : 0;
+  }
+
+  // ⭐ Layer 10: Model Score
+  function modelScore(t1, t2, primaryModel, allModels) {
+    if (!primaryModel && !allModels.length) return 0;
+    const upper2 = t2.toUpperCase();
+
+    let score = 0;
+    let matched = 0;
+
+    for (const m of allModels) {
+      if (upper2.includes(m)) matched++;
+    }
+
+    if (primaryModel && upper2.includes(primaryModel)) score += 1;
+    score += matched / Math.max(allModels.length, 1);
+
+    return Math.min(score / 2, 1);
   }
 
   // ═══════════════════════════════════════════════════════
-  // BUILD QUERIES
+  // BUILD 30 QUERIES
   // ═══════════════════════════════════════════════════════
 
   function buildMegaQueries(title) {
@@ -466,50 +547,93 @@
     const primaryModel = getPrimaryModel(title);
     const allModels = extractModels(title);
     const kws = getKeywords(title);
+    const kwsNoColor = getKeywordsNoColor(title);
     const queries = [];
-    const seenKw = new Set();
+    const seen = new Set();
 
-    function addQ(name, kw, page = 1) {
+    function addQ(name, kw, page = 1, priority = 5) {
       kw = (kw || "").trim();
       if (!kw) return;
-      const key = kw.toLowerCase() + "@" + page;
-      if (seenKw.has(key)) return;
-      seenKw.add(key);
-      queries.push({ name: `${name}${page > 1 ? "-p" + page : ""}`, keywords: kw, page, pageSize: 50 });
+      const key = `${kw.toLowerCase()}@${page}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      queries.push({ name, keywords: kw, page, pageSize: 50, priority });
     }
 
-    // Tier 1
+    // ═══ Priority 1: الأقوى ═══
     if (brand && primaryModel) {
-      addQ("brand+model", `${brand} ${primaryModel}`);
-      addQ("brand+model", `${brand} ${primaryModel}`, 2);
+      addQ("brand+model", `${brand} ${primaryModel}`, 1, 1);
+      addQ("brand+model-p2", `${brand} ${primaryModel}`, 2, 1);
     }
 
-    // Tier 2
+    // ═══ Priority 2: Model فقط ═══
     if (primaryModel) {
-      addQ("model-only", primaryModel);
-      addQ("model-only", primaryModel, 2);
+      addQ("model-only", primaryModel, 1, 2);
+      addQ("model-only-p2", primaryModel, 2, 2);
     }
 
-    // Tier 3
-    if (brand && kws.length >= 2) addQ("brand+2kw", `${brand} ${kws[0]} ${kws[1]}`);
-    if (brand && kws.length >= 3) addQ("brand+3kw", `${brand} ${kws[0]} ${kws[1]} ${kws[2]}`);
+    // ═══ Priority 3: brand + 3 keywords ═══
+    if (brand && kws.length >= 3) {
+      addQ("brand+3kw", `${brand} ${kws[0]} ${kws[1]} ${kws[2]}`, 1, 3);
+    }
 
-    // Tier 4
-    if (brand && kws.length >= 1) addQ("brand+kw1", `${brand} ${kws[0]}`);
-    if (brand) addQ("brand-only", brand);
+    // ═══ Priority 4: brand + 2 keywords ═══
+    if (brand && kws.length >= 2) {
+      addQ("brand+2kw", `${brand} ${kws[0]} ${kws[1]}`, 1, 4);
+    }
 
-    // Tier 5
-    if (primaryModel && kws.length >= 1) addQ("model+kw", `${primaryModel} ${kws[0]}`);
-    if (primaryModel && brand) addQ("model+brand+kw", `${primaryModel} ${brand} ${kws[0]}`);
-    if (allModels.length >= 2) addQ("all-models", allModels.slice(0, 3).join(" "));
+    // ═══ Priority 5: brand فقط ═══
+    if (brand) {
+      addQ("brand-only", brand, 1, 5);
+    }
 
-    // Tier 6
-    if (kws.length >= 2) addQ("kw2", `${kws[0]} ${kws[1]}`);
-    if (kws.length >= 3) addQ("kw3", `${kws[0]} ${kws[1]} ${kws[2]}`);
-    if (kws.length >= 4) addQ("kw4", kws.slice(0, 4).join(" "));
-    if (kws.length >= 3) addQ("kw-spread", `${kws[0]} ${kws[2]}`);
+    // ═══ Priority 6: Model + keywords ═══
+    if (primaryModel && kws.length >= 2) {
+      addQ("model+2kw", `${primaryModel} ${kws[0]} ${kws[1]}`, 1, 6);
+    }
 
-    return queries.slice(0, 25);
+    // ═══ Priority 7: All models ═══
+    if (allModels.length >= 2) {
+      addQ("all-models", allModels.slice(0, 3).join(" "), 1, 7);
+    }
+
+    // ═══ Priority 8: brand + kw (no color) ═══
+    if (brand && kwsNoColor.length >= 1) {
+      addQ("brand+kwNoColor", `${brand} ${kwsNoColor[0]}`, 1, 8);
+    }
+
+    // ═══ Priority 9: 4 keywords ═══
+    if (kws.length >= 4) {
+      addQ("kw4", kws.slice(0, 4).join(" "), 1, 9);
+    }
+
+    // ═══ Priority 10: 3 keywords ═══
+    if (kws.length >= 3) {
+      addQ("kw3", kws.slice(0, 3).join(" "), 1, 10);
+      addQ("kw3-spread", `${kws[0]} ${kws[2]}`, 1, 10);
+    }
+
+    // ═══ Priority 11: 2 keywords ═══
+    if (kws.length >= 2) {
+      addQ("kw2", `${kws[0]} ${kws[1]}`, 1, 11);
+    }
+
+    // ═══ Priority 12: brand + all models ═══
+    if (brand && allModels.length >= 2) {
+      addQ("brand+allmodels", `${brand} ${allModels.slice(0, 2).join(" ")}`, 1, 12);
+    }
+
+    // ═══ Priority 13: reverse keyword order ═══
+    if (kws.length >= 3) {
+      addQ("kw-reverse", `${kws[2]} ${kws[0]}`, 1, 13);
+    }
+
+    // ═══ Priority 14: brand alone صفحة 2 ═══
+    if (brand) {
+      addQ("brand-only-p2", brand, 2, 14);
+    }
+
+    return queries.slice(0, 30);
   }
 
   async function fetchMegaSearch(queries, cacheKey) {
@@ -525,14 +649,13 @@
   }
 
   // ═══════════════════════════════════════════════════════
-  // ⭐ CATEGORY-AWARE PRICE RANGES
+  // PRICE RANGES
   // ═══════════════════════════════════════════════════════
 
   function getPriceRange(productType, referencePrice) {
     if (!referencePrice || referencePrice <= 0) return { min: 0, max: Infinity };
-
     const ranges = {
-      perfume:    { min: 0.15, max: 8 },   // نطاق واسع
+      perfume:    { min: 0.15, max: 8 },
       headphones: { min: 0.3, max: 5 },
       phone:      { min: 0.5, max: 3 },
       laptop:     { min: 0.6, max: 2 },
@@ -547,9 +670,10 @@
       tool:       { min: 0.3, max: 5 },
       lighting:   { min: 0.2, max: 8 },
       fishing:    { min: 0.2, max: 8 },
+      glasses:    { min: 0.3, max: 6 },
+      case:       { min: 0.3, max: 6 },
       general:    { min: 0.15, max: 7 },
     };
-
     const r = ranges[productType] || ranges.general;
     return {
       min: referencePrice * r.min,
@@ -558,10 +682,10 @@
   }
 
   // ═══════════════════════════════════════════════════════
-  // SCORING
+  // ⭐⭐⭐ COGNITIVE SCORING (14 layers)
   // ═══════════════════════════════════════════════════════
 
-  function scoreProduct(p, ctx) {
+  function cognitiveScore(p, ctx) {
     const price = parseFloat(p.target_sale_price || p.sale_price || 0);
     const oldP = parseFloat(p.target_original_price || p.original_price || 0);
     const rating = parseFloat(String(p.evaluate_rate || "0").replace("%", "")) / 20;
@@ -574,84 +698,109 @@
     if (!id || !price || !title) return null;
     if (id === ctx.productId) return null;
 
-    const titleUpper = title.toUpperCase();
-
-    // ⭐⭐⭐ IMAGE HASH (فحص كل صور المنتج)
+    // ═══ Layer 1: Image Hash ═══
     const hashMatch = ctx.imageHashes.some(h => h === imageHash) ||
                       (ctx.imageHash && ctx.imageHash === imageHash);
 
-    // ⭐⭐ Fuzzy brand
+    // ═══ Layer 2: Brand Fuzzy ═══
     const cardBrand = extractBrand(title);
-    const normalizedCardBrand = normalizeBrand(cardBrand);
-    const normalizedCtxBrand = normalizeBrand(ctx.brand);
-    const brandMatch = normalizedCtxBrand && normalizedCardBrand === normalizedCtxBrand;
+    const brandMatch = brandFuzzyMatch(cardBrand, ctx.brand);
 
-    // ⭐ Model match
+    // ═══ Layer 3: Model Match ═══
+    const titleUpper = title.toUpperCase();
     const hasPrimaryModel = ctx.primaryModel && titleUpper.includes(ctx.primaryModel);
     const allModelsMatch = ctx.models.filter(m => titleUpper.includes(m));
     const modelMatches = allModelsMatch.length;
 
-    // ⭐ Keywords
+    // ═══ Layer 4: Keyword Count ═══
     const kwMatches = countKeywords(title, ctx.keywords);
 
-    // ⭐ Title similarity (Levenshtein)
-    const titleSim = titleSimilarity(ctx.title, title);
+    // ═══ Layer 5: Jaccard ═══
+    const jaccard = jaccardSimilarity(ctx.title, title);
 
-    // ⭐ فحص السعر حسب النوع
-    const priceRange = getPriceRange(ctx.productType, ctx.referencePrice);
-    if (price < priceRange.min || price > priceRange.max) return null;
+    // ═══ Layer 6: Cosine ═══
+    const cosine = cosineSimilarity(ctx.title, title);
 
-    // ═══ حساب الـ Tier ═══
+    // ═══ Layer 7: Levenshtein ═══
+    const lev = levenshteinSimilarity(ctx.title, title);
+
+    // ═══ Layer 8: N-gram ═══
+    const ngram = ngramSimilarity(ctx.title, title);
+
+    // ═══ Layer 9: Numbers ═══
+    const numbers = numberMatch(ctx.title, title);
+
+    // ═══ Layer 10: Category ═══
+    const catScore = categoryMatch(ctx.category, "") || 0.5;
+
+    // ═══ Layer 11: Type ═══
+    const typeScore = typeMatch(ctx.productType, detectProductType(title));
+
+    // ═══ Layer 12: Model Score ═══
+    const modScore = modelScore(ctx.title, title, ctx.primaryModel, ctx.models);
+
+    // ═══ Layer 13: Price Filter ═══
+    const range = getPriceRange(ctx.productType, ctx.referencePrice);
+    if (price < range.min || price > range.max) return null;
+
+    // ═══ Layer 14: Confidence Score ═══
+    let confidence = 0;
+    confidence += hashMatch ? 100 : 0;
+    confidence += brandMatch ? 15 : 0;
+    confidence += hasPrimaryModel ? 20 : 0;
+    confidence += Math.min(modelMatches * 5, 15);
+    confidence += Math.min(kwMatches * 2, 10);
+    confidence += Math.round(jaccard * 20);
+    confidence += Math.round(cosine * 15);
+    confidence += Math.round(lev * 15);
+    confidence += Math.round(ngram * 15);
+    confidence += Math.round(numbers * 10);
+    confidence += Math.round(catScore * 5);
+    confidence += Math.round(typeScore * 5);
+    confidence += Math.round(modScore * 15);
+
+    confidence = Math.min(confidence, 100);
+
+    // ═══ Tier Determination ═══
     let tier = 99;
-    let score = 0;
 
-    if (hashMatch) {
-      tier = 1;
-      score = 200;
-    } else if (brandMatch && hasPrimaryModel && kwMatches >= 3 && titleSim >= 0.7) {
-      tier = 1;
-      score = 180;
-    } else if (brandMatch && hasPrimaryModel && kwMatches >= 2) {
-      tier = 2;
-      score = 150;
-    } else if (brandMatch && hasPrimaryModel) {
-      tier = 3;
-      score = 120;
-    } else if (hasPrimaryModel && modelMatches >= 2 && kwMatches >= 3) {
-      tier = 3;
-      score = 110;
-    } else if (hasPrimaryModel && kwMatches >= 3 && titleSim >= 0.6) {
-      tier = 4;
-      score = 90;
-    } else if (brandMatch && kwMatches >= 3) {
-      tier = 4;
-      score = 80;
-    } else if (hasPrimaryModel && kwMatches >= 2) {
-      tier = 5;
-      score = 65;
-    } else if (brandMatch && kwMatches >= 2) {
-      tier = 5;
-      score = 55;
-    } else if (kwMatches >= 4 && titleSim >= 0.5) {
-      tier = 6;
-      score = 40;
-    } else if (kwMatches >= 3) {
-      tier = 7;
-      score = 25;
-    } else {
-      return null;
-    }
+    if (hashMatch) tier = 1;
+    else if (confidence >= 90) tier = 2;
+    else if (confidence >= 80) tier = 3;
+    else if (confidence >= 70) tier = 4;
+    else if (confidence >= 60) tier = 5;
+    else if (confidence >= 50) tier = 6;
+    else if (confidence >= 40) tier = 7;
+    else if (confidence >= 30) tier = 8;
+    else if (confidence >= 25) tier = 9;
+    else if (confidence >= 20) tier = 10;
+    else if (confidence >= 15) tier = 11;
+    else if (confidence >= 10) tier = 12;
+    else if (confidence >= 5) tier = 13;
+    else return null;
 
     const finalOld = (oldP > price && price > 0) ? oldP : 0;
     const discount = finalOld > 0 ? Math.round((1 - price / finalOld) * 100) : 0;
 
     return {
       _tier: tier,
-      _score: score,
+      _confidence: confidence,
       _id: id,
       _store: store.toLowerCase(),
       _imageHash: imageHash,
-      _titleSim: titleSim,
+      _hashMatch: hashMatch,
+      _brandMatch: brandMatch,
+      _hasPrimaryModel: hasPrimaryModel,
+      _modelMatches: modelMatches,
+      _kwMatches: kwMatches,
+      _jaccard: jaccard,
+      _cosine: cosine,
+      _lev: lev,
+      _ngram: ngram,
+      _numbers: numbers,
+      _catScore: catScore,
+      _typeScore: typeScore,
+      _modScore: modScore,
       store: store || "AliExpress Seller",
       img,
       price,
@@ -661,13 +810,7 @@
       sold: parseInt(p.lastest_volume || p.volume || 0, 10),
       link: p.promotion_link || p.product_detail_url || "",
       title,
-      similarity: Math.min(score, 100),
-      isHashMatch: hashMatch,
-      brandMatch,
-      hasPrimaryModel,
-      modelMatches,
-      kwMatches,
-      titleSim,
+      similarity: confidence,
     };
   }
 
@@ -680,14 +823,14 @@
 
     scored.sort((a, b) => {
       if (a._tier !== b._tier) return a._tier - b._tier;
-      return b._score - a._score;
+      return b._confidence - a._confidence;
     });
 
     for (const s of scored) {
       if (seenIds.has(s._id)) continue;
       if (s._store && storesOriginal && s._store === storesOriginal) continue;
       if (s._tier > 1 && s._store && seenStores.has(s._store)) continue;
-      if (s._imageHash && seenHashes.has(s._imageHash) && !s.isHashMatch) continue;
+      if (s._imageHash && seenHashes.has(s._imageHash) && !s._hashMatch) continue;
 
       seenIds.add(s._id);
       if (s._store) seenStores.add(s._store);
@@ -701,10 +844,9 @@
 
   function rankProducts(products) {
     return products.map(p => {
-      let rank = p._score;
-      if (p.rating >= 4.5) rank += 5;
-      if (p.sold >= 100) rank += 3;
-      if (p.titleSim >= 0.7) rank += 10;
+      let rank = p._confidence;
+      if (p.rating >= 4.5) rank += 3;
+      if (p.sold >= 100) rank += 2;
       return { ...p, _rank: rank };
     }).sort((a, b) => {
       if (Math.abs(b._rank - a._rank) > 5) return b._rank - a._rank;
@@ -721,7 +863,7 @@
       const raw = localStorage.getItem(`ss-cache-${productId}`);
       if (!raw) return null;
       const data = JSON.parse(raw);
-      if (Date.now() - data.ts > LOCAL_CACHE_TTL) return null;
+      if (Date.now() - data.ts > CACHE_TTL) return null;
       return data.sellers;
     } catch (_) { return null; }
   }
@@ -786,7 +928,6 @@
     };
     panel.querySelector("[data-action='refresh']").onclick = () => {
       if (isScanning) return;
-      // مسح الكاش المحلي
       try { localStorage.removeItem(`ss-cache-${currentProduct.id}`); } catch (_) {}
       doScan();
     };
@@ -810,7 +951,6 @@
     renderLoading();
 
     try {
-      // ⭐ فحص الكاش المحلي أولاً
       const cached = localCacheGet(currentProduct.id);
       if (cached && cached.length > 0) {
         console.log("[Smart Shopper] ⚡ Local cache HIT");
@@ -831,20 +971,19 @@
       const imageHashes = currentProduct.imageHashes || [];
 
       console.log("═══════════════════════════════════════════");
-      console.log("[Smart Shopper] v44 ULTIMATE");
+      console.log("[Smart Shopper] v45 COGNITIVE");
       console.log("[Smart Shopper] Title:", currentProduct.title.slice(0, 80));
       console.log("[Smart Shopper] Brand:", brand);
-      console.log("[Smart Shopper] Primary Model:", primaryModel);
+      console.log("[Smart Shopper] Model:", primaryModel);
       console.log("[Smart Shopper] Models:", models);
       console.log("[Smart Shopper] Category:", currentProduct.category);
-      console.log("[Smart Shopper] Product Type:", currentProduct.productType);
+      console.log("[Smart Shopper] Type:", currentProduct.productType);
       console.log("[Smart Shopper] Image Hashes:", imageHashes.length);
-      console.log("[Smart Shopper] Reference Price:", referencePrice);
+      console.log("[Smart Shopper] Price:", referencePrice);
       console.log("═══════════════════════════════════════════");
 
       const queries = buildMegaQueries(currentProduct.title);
-      console.log(`[Smart Shopper] Queries: ${queries.length}`);
-      queries.forEach(q => console.log(`  → ${q.name}: "${q.keywords}"`));
+      console.log(`[Smart Shopper] ${queries.length} queries`);
 
       if (!queries.length) {
         sellers = [];
@@ -852,12 +991,10 @@
         return;
       }
 
-      // cacheKey فريد لكل منتج
-      const cacheKey = `product-${currentProduct.id}-${currentProduct.productType}`;
-
+      const cacheKey = `p-${currentProduct.id}-${currentProduct.productType}`;
       const data = await fetchMegaSearch(queries, cacheKey);
       const raw = data?.products || [];
-      console.log(`[Smart Shopper] Raw: ${raw.length} unique${data.cached ? " (from edge cache)" : ""}`);
+      console.log(`[Smart Shopper] Raw: ${raw.length}${data.cached ? " (cached)" : ""}`);
 
       const ctx = {
         productId: currentProduct.id,
@@ -871,11 +1008,12 @@
         imageHash,
         imageHashes,
         productType: currentProduct.productType,
+        category: currentProduct.category,
       };
 
       const scored = [];
       for (const p of raw) {
-        const s = scoreProduct(p, ctx);
+        const s = cognitiveScore(p, ctx);
         if (s) scored.push(s);
       }
 
@@ -890,7 +1028,6 @@
 
       sellers = rankProducts(picked);
 
-      // ⭐ حفظ في الكاش المحلي
       if (sellers.length > 0) {
         localCacheSet(currentProduct.id, sellers);
       }
@@ -954,10 +1091,10 @@
     if (!list) return;
     list.innerHTML = `
       <div class="ss-empty">
-        <div class="ss-empty-icon">🎯</div>
+        <div class="ss-empty-icon">🧠</div>
         <div class="ss-empty-title">No matches found</div>
         <div class="ss-empty-sub">
-          This product seems unique. Try another product.
+          This product seems unique across ${currentProduct?.productType || "all"} stores.
         </div>
         <button class="ss-empty-btn" id="ss-retry">${T("scanAgain")}</button>
       </div>
@@ -982,17 +1119,19 @@
     const minPrice = Math.min(...items.map(s => s.price).filter(p => p > 0));
     const currentPrice = currentProduct?.price || 0;
 
-    list.innerHTML = items.slice(0, 20).map((s, i) => {
+    list.innerHTML = items.slice(0, 25).map((s, i) => {
       const rank = i + 1;
       const isCheap = s.price === minPrice && s.price > 0;
       const cardClass = rank === 1 ? "ss-best" : (isCheap ? "ss-cheap" : "");
       const rankClass = rank <= 3 ? `ss-r${rank}` : "";
 
-      // بادج
+      // بادج ذكي
       let badge = "";
-      if (s.isHashMatch) badge = `<span class="ss-badge ss-badge-match">🎯 EXACT</span>`;
-      else if (s.brandMatch && s.hasPrimaryModel) badge = `<span class="ss-badge ss-badge-match" style="background:#ecfdf5;color:#065f46">✓ SAME</span>`;
-      else if (s.titleSim >= 0.75) badge = `<span class="ss-badge ss-badge-match" style="background:#fef3c7;color:#92400e">◐ ${Math.round(s.titleSim * 100)}%</span>`;
+      const conf = s._confidence || s.similarity || 0;
+      if (s._hashMatch) badge = `<span class="ss-badge ss-badge-match">🎯 EXACT 100%</span>`;
+      else if (conf >= 85) badge = `<span class="ss-badge ss-badge-match" style="background:#ecfdf5;color:#065f46">✓ ${conf}%</span>`;
+      else if (conf >= 70) badge = `<span class="ss-badge ss-badge-match" style="background:#dbeafe;color:#1e40af">◐ ${conf}%</span>`;
+      else if (conf >= 55) badge = `<span class="ss-badge ss-badge-match" style="background:#fef3c7;color:#92400e">◔ ${conf}%</span>`;
       else if (activeFilter === "cheap" && rank === 1) badge = `<span class="ss-badge ss-badge-cheap">${T("cheapestTag")}</span>`;
       else if (activeFilter === "discount" && rank === 1) badge = `<span class="ss-badge ss-badge-hot">${T("bestDeal")}</span>`;
       else if (activeFilter === "sold" && rank === 1) badge = `<span class="ss-badge ss-badge-top">${T("mostSoldTag")}</span>`;
@@ -1094,8 +1233,7 @@
   async function run() {
     await sleep(800);
     currentProduct = extractProduct();
-    console.log("[Smart Shopper] v44 ready");
-    console.log("[Smart Shopper] Image Hashes:", currentProduct.imageHashes.length);
+    console.log("[Smart Shopper] v45 COGNITIVE ready");
     if (!currentProduct.title || currentProduct.title.length < 5) return;
     buildPanel();
     await doScan();
@@ -1110,5 +1248,5 @@
   });
 
   run();
-  console.log("[Smart Shopper] v44 ready.");
+  console.log("[Smart Shopper] v45 ready.");
 })();
