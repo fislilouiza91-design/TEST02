@@ -1,7 +1,7 @@
 /* ═══════════════════════════════════════════════════════
-   Smart Shopper — Content Script (v52 COMPREHENSIVE)
-   All Languages + All Countries + All Currencies.
-   No cache — for testing and refinement.
+   Smart Shopper — Content Script (v53)
+   Multi-Language + Multi-Country + Multi-Currency.
+   No cache. Model-First search.
    ═══════════════════════════════════════════════════════ */
 
 (function () {
@@ -13,7 +13,7 @@
   const T = typeof SS_T === "function" ? SS_T : (k) => k;
   const IS_RTL = typeof SS_RTL !== "undefined" ? SS_RTL : false;
 
-  console.log(`[Smart Shopper] v52 COMPREHENSIVE`);
+  console.log("[Smart Shopper] v53 loading...");
 
   const PANEL_ID = "ss-floating-panel";
   const WORKER_URL = "https://cold-art-c5df.fislilouiza91.workers.dev";
@@ -29,450 +29,192 @@
   const fmt = (n) => n >= 1000 ? (n / 1000).toFixed(1).replace(".0", "") + "k" : String(n);
 
   // ═══════════════════════════════════════════════════════
-  // 💱 CURRENCY DATABASE (110+ Currencies)
+  // CURRENCY
   // ═══════════════════════════════════════════════════════
 
   const CURRENCY_INFO = {
-    // ═══ Americas ═══
-    USD: { symbol: "$",    prefix: true,  decimals: 2 },
-    CAD: { symbol: "CA$",  prefix: true,  decimals: 2 },
-    BRL: { symbol: "R$",   prefix: true,  decimals: 2 },
-    MXN: { symbol: "MX$",  prefix: true,  decimals: 2 },
-    ARS: { symbol: "AR$",  prefix: true,  decimals: 2 },
-    CLP: { symbol: "CLP$", prefix: true,  decimals: 0 },
-    COP: { symbol: "COP$", prefix: true,  decimals: 0 },
-    PEN: { symbol: "S/",   prefix: true,  decimals: 2 },
-    UYU: { symbol: "$U",   prefix: true,  decimals: 2 },
-    PYG: { symbol: "₲",    prefix: true,  decimals: 0 },
-    BOB: { symbol: "Bs",   prefix: true,  decimals: 2 },
-    VES: { symbol: "Bs.S", prefix: true,  decimals: 2 },
-    GTQ: { symbol: "Q",    prefix: true,  decimals: 2 },
-    CRC: { symbol: "₡",    prefix: true,  decimals: 2 },
-    PAB: { symbol: "B/.",  prefix: true,  decimals: 2 },
-    DOP: { symbol: "RD$",  prefix: true,  decimals: 2 },
-    JMD: { symbol: "J$",   prefix: true,  decimals: 2 },
-    TTD: { symbol: "TT$",  prefix: true,  decimals: 2 },
-    BBD: { symbol: "Bds$", prefix: true,  decimals: 2 },
-    BSD: { symbol: "B$",   prefix: true,  decimals: 2 },
-    BZD: { symbol: "BZ$",  prefix: true,  decimals: 2 },
-    HNL: { symbol: "L",    prefix: true,  decimals: 2 },
-    NIO: { symbol: "C$",   prefix: true,  decimals: 2 },
-    CUP: { symbol: "₱",    prefix: true,  decimals: 2 },
-
-    // ═══ Europe ═══
-    EUR: { symbol: "€",    prefix: false, decimals: 2 },
-    GBP: { symbol: "£",    prefix: true,  decimals: 2 },
-    CHF: { symbol: "CHF",  prefix: false, decimals: 2 },
-    SEK: { symbol: "kr",   prefix: false, decimals: 2 },
-    NOK: { symbol: "kr",   prefix: false, decimals: 2 },
-    DKK: { symbol: "kr",   prefix: false, decimals: 2 },
-    ISK: { symbol: "kr",   prefix: false, decimals: 0 },
-    PLN: { symbol: "zł",   prefix: false, decimals: 2 },
-    CZK: { symbol: "Kč",   prefix: false, decimals: 2 },
-    HUF: { symbol: "Ft",   prefix: false, decimals: 0 },
-    RON: { symbol: "lei",  prefix: false, decimals: 2 },
-    BGN: { symbol: "лв",   prefix: false, decimals: 2 },
-    HRK: { symbol: "kn",   prefix: false, decimals: 2 },
-    RSD: { symbol: "дин",  prefix: false, decimals: 0 },
-    MKD: { symbol: "ден",  prefix: false, decimals: 0 },
-    ALL: { symbol: "L",    prefix: false, decimals: 0 },
-    BAM: { symbol: "KM",   prefix: false, decimals: 2 },
-    MDL: { symbol: "L",    prefix: false, decimals: 2 },
-    RUB: { symbol: "₽",    prefix: false, decimals: 0 },
-    UAH: { symbol: "₴",    prefix: false, decimals: 0 },
-    BYN: { symbol: "Br",   prefix: false, decimals: 2 },
-    TRY: { symbol: "₺",    prefix: true,  decimals: 2 },
-    GEL: { symbol: "₾",    prefix: false, decimals: 2 },
-    AMD: { symbol: "֏",    prefix: false, decimals: 0 },
-    AZN: { symbol: "₼",    prefix: false, decimals: 2 },
-
-    // ═══ Middle East ═══
-    AED: { symbol: "AED",  prefix: false, decimals: 2 },
-    SAR: { symbol: "SAR",  prefix: false, decimals: 2 },
-    QAR: { symbol: "QAR",  prefix: false, decimals: 2 },
-    KWD: { symbol: "KWD",  prefix: false, decimals: 3 },
-    BHD: { symbol: "BHD",  prefix: false, decimals: 3 },
-    OMR: { symbol: "OMR",  prefix: false, decimals: 3 },
-    JOD: { symbol: "JOD",  prefix: false, decimals: 3 },
-    ILS: { symbol: "₪",    prefix: true,  decimals: 2 },
-    IQD: { symbol: "د.ع",  prefix: false, decimals: 0 },
-    IRR: { symbol: "﷼",    prefix: false, decimals: 0 },
-    LBP: { symbol: "ل.ل",  prefix: false, decimals: 0 },
-    SYP: { symbol: "ل.س",  prefix: false, decimals: 0 },
-    YER: { symbol: "﷼",    prefix: false, decimals: 0 },
-
-    // ═══ North Africa ═══
-    EGP: { symbol: "EGP",  prefix: false, decimals: 2 },
-    DZD: { symbol: "DA",   prefix: false, decimals: 2 },
-    MAD: { symbol: "MAD",  prefix: false, decimals: 2 },
-    TND: { symbol: "TND",  prefix: false, decimals: 3 },
-    LYD: { symbol: "LYD",  prefix: false, decimals: 3 },
-    SDG: { symbol: "ج.س",  prefix: false, decimals: 2 },
-    MRU: { symbol: "UM",   prefix: false, decimals: 2 },
-
-    // ═══ Sub-Saharan Africa ═══
-    ZAR: { symbol: "R",    prefix: true,  decimals: 2 },
-    NGN: { symbol: "₦",    prefix: true,  decimals: 2 },
-    KES: { symbol: "KSh",  prefix: false, decimals: 2 },
-    GHS: { symbol: "GH₵",  prefix: true,  decimals: 2 },
-    UGX: { symbol: "USh",  prefix: false, decimals: 0 },
-    TZS: { symbol: "TSh",  prefix: false, decimals: 0 },
-    RWF: { symbol: "FRw",  prefix: false, decimals: 0 },
-    BIF: { symbol: "FBu",  prefix: false, decimals: 0 },
-    ETB: { symbol: "Br",   prefix: false, decimals: 2 },
-    SOS: { symbol: "Sh",   prefix: false, decimals: 0 },
-    DJF: { symbol: "Fdj",  prefix: false, decimals: 0 },
-    ERN: { symbol: "Nfk",  prefix: false, decimals: 2 },
-    SSP: { symbol: "SSP",  prefix: false, decimals: 2 },
-    CDF: { symbol: "FC",   prefix: false, decimals: 2 },
-    XAF: { symbol: "FCFA", prefix: false, decimals: 0 },
-    XOF: { symbol: "CFA",  prefix: false, decimals: 0 },
-    GMD: { symbol: "D",    prefix: false, decimals: 2 },
-    GNF: { symbol: "FG",   prefix: false, decimals: 0 },
-    LRD: { symbol: "L$",   prefix: true,  decimals: 2 },
-    SLL: { symbol: "Le",   prefix: false, decimals: 0 },
-    MRO: { symbol: "UM",   prefix: false, decimals: 2 },
-    MWK: { symbol: "MK",   prefix: false, decimals: 2 },
-    MZN: { symbol: "MT",   prefix: false, decimals: 2 },
-    ZMW: { symbol: "ZK",   prefix: false, decimals: 2 },
-    ZWL: { symbol: "Z$",   prefix: true,  decimals: 2 },
-    BWP: { symbol: "P",    prefix: false, decimals: 2 },
-    NAD: { symbol: "N$",   prefix: true,  decimals: 2 },
-    SZL: { symbol: "E",    prefix: false, decimals: 2 },
-    LSL: { symbol: "L",    prefix: false, decimals: 2 },
-    MGA: { symbol: "Ar",   prefix: false, decimals: 0 },
-    MUR: { symbol: "₨",    prefix: true,  decimals: 2 },
-    SCR: { symbol: "₨",    prefix: true,  decimals: 2 },
-    CVE: { symbol: "$",    prefix: true,  decimals: 2 },
-    STN: { symbol: "Db",   prefix: false, decimals: 2 },
-    AOA: { symbol: "Kz",   prefix: false, decimals: 2 },
-
-    // ═══ South Asia ═══
-    INR: { symbol: "₹",    prefix: true,  decimals: 2 },
-    PKR: { symbol: "₨",    prefix: true,  decimals: 0 },
-    BDT: { symbol: "৳",    prefix: true,  decimals: 0 },
-    LKR: { symbol: "Rs",   prefix: true,  decimals: 2 },
-    NPR: { symbol: "रू",   prefix: true,  decimals: 2 },
-    AFN: { symbol: "؋",    prefix: false, decimals: 2 },
-    MVR: { symbol: "Rf",   prefix: false, decimals: 2 },
-    BTN: { symbol: "Nu.",  prefix: true,  decimals: 2 },
-
-    // ═══ East Asia ═══
-    JPY: { symbol: "¥",    prefix: true,  decimals: 0 },
-    CNY: { symbol: "CN¥",  prefix: true,  decimals: 2 },
-    KRW: { symbol: "₩",    prefix: true,  decimals: 0 },
-    TWD: { symbol: "NT$",  prefix: true,  decimals: 2 },
-    HKD: { symbol: "HK$",  prefix: true,  decimals: 2 },
-    MOP: { symbol: "MOP$", prefix: true,  decimals: 2 },
-
-    // ═══ Southeast Asia ═══
-    THB: { symbol: "฿",    prefix: true,  decimals: 2 },
-    VND: { symbol: "₫",    prefix: false, decimals: 0 },
-    IDR: { symbol: "Rp",   prefix: true,  decimals: 0 },
-    MYR: { symbol: "RM",   prefix: true,  decimals: 2 },
-    SGD: { symbol: "S$",   prefix: true,  decimals: 2 },
-    PHP: { symbol: "₱",    prefix: true,  decimals: 2 },
-    BND: { symbol: "B$",   prefix: true,  decimals: 2 },
-    MMK: { symbol: "K",    prefix: false, decimals: 0 },
-    KHR: { symbol: "៛",    prefix: false, decimals: 0 },
-    LAK: { symbol: "₭",    prefix: false, decimals: 0 },
-    TL:  { symbol: "$",    prefix: true,  decimals: 2 },
-
-    // ═══ Central Asia ═══
-    KZT: { symbol: "₸",    prefix: false, decimals: 0 },
-    UZS: { symbol: "so'm", prefix: false, decimals: 0 },
-    KGS: { symbol: "с",    prefix: false, decimals: 0 },
-    TJS: { symbol: "SM",   prefix: false, decimals: 2 },
-    TMT: { symbol: "m",    prefix: false, decimals: 2 },
-    MNT: { symbol: "₮",    prefix: false, decimals: 0 },
-
-    // ═══ Oceania ═══
-    AUD: { symbol: "AU$",  prefix: true,  decimals: 2 },
-    NZD: { symbol: "NZ$",  prefix: true,  decimals: 2 },
-    FJD: { symbol: "FJ$",  prefix: true,  decimals: 2 },
-    PGK: { symbol: "K",    prefix: false, decimals: 2 },
-    WST: { symbol: "T",    prefix: false, decimals: 2 },
-    TOP: { symbol: "T$",   prefix: true,  decimals: 2 },
-    VUV: { symbol: "VT",   prefix: false, decimals: 0 },
-    SBD: { symbol: "SI$",  prefix: true,  decimals: 2 },
+    USD:{symbol:"$",prefix:true,dec:2}, CAD:{symbol:"CA$",prefix:true,dec:2},
+    BRL:{symbol:"R$",prefix:true,dec:2}, MXN:{symbol:"MX$",prefix:true,dec:2},
+    ARS:{symbol:"AR$",prefix:true,dec:2}, CLP:{symbol:"CLP$",prefix:true,dec:0},
+    COP:{symbol:"COP$",prefix:true,dec:0}, PEN:{symbol:"S/",prefix:true,dec:2},
+    UYU:{symbol:"$U",prefix:true,dec:2}, PYG:{symbol:"₲",prefix:true,dec:0},
+    BOB:{symbol:"Bs",prefix:true,dec:2}, GTQ:{symbol:"Q",prefix:true,dec:2},
+    CRC:{symbol:"₡",prefix:true,dec:2}, DOP:{symbol:"RD$",prefix:true,dec:2},
+    JMD:{symbol:"J$",prefix:true,dec:2},
+    EUR:{symbol:"€",prefix:false,dec:2}, GBP:{symbol:"£",prefix:true,dec:2},
+    CHF:{symbol:"CHF",prefix:false,dec:2}, SEK:{symbol:"kr",prefix:false,dec:2},
+    NOK:{symbol:"kr",prefix:false,dec:2}, DKK:{symbol:"kr",prefix:false,dec:2},
+    ISK:{symbol:"kr",prefix:false,dec:0}, PLN:{symbol:"zł",prefix:false,dec:2},
+    CZK:{symbol:"Kč",prefix:false,dec:2}, HUF:{symbol:"Ft",prefix:false,dec:0},
+    RON:{symbol:"lei",prefix:false,dec:2}, BGN:{symbol:"лв",prefix:false,dec:2},
+    HRK:{symbol:"kn",prefix:false,dec:2}, RSD:{symbol:"дин",prefix:false,dec:0},
+    MKD:{symbol:"ден",prefix:false,dec:0}, ALL:{symbol:"L",prefix:false,dec:0},
+    BAM:{symbol:"KM",prefix:false,dec:2}, MDL:{symbol:"L",prefix:false,dec:2},
+    RUB:{symbol:"₽",prefix:false,dec:0}, UAH:{symbol:"₴",prefix:false,dec:0},
+    BYN:{symbol:"Br",prefix:false,dec:2}, TRY:{symbol:"₺",prefix:true,dec:2},
+    GEL:{symbol:"₾",prefix:false,dec:2}, AMD:{symbol:"֏",prefix:false,dec:0},
+    AZN:{symbol:"₼",prefix:false,dec:2},
+    AED:{symbol:"AED",prefix:false,dec:2}, SAR:{symbol:"SAR",prefix:false,dec:2},
+    QAR:{symbol:"QAR",prefix:false,dec:2}, KWD:{symbol:"KWD",prefix:false,dec:3},
+    BHD:{symbol:"BHD",prefix:false,dec:3}, OMR:{symbol:"OMR",prefix:false,dec:3},
+    JOD:{symbol:"JOD",prefix:false,dec:3}, ILS:{symbol:"₪",prefix:true,dec:2},
+    IQD:{symbol:"د.ع",prefix:false,dec:0}, IRR:{symbol:"﷼",prefix:false,dec:0},
+    LBP:{symbol:"ل.ل",prefix:false,dec:0}, SYP:{symbol:"ل.س",prefix:false,dec:0},
+    YER:{symbol:"﷼",prefix:false,dec:0},
+    EGP:{symbol:"EGP",prefix:false,dec:2}, DZD:{symbol:"DA",prefix:false,dec:2},
+    MAD:{symbol:"MAD",prefix:false,dec:2}, TND:{symbol:"TND",prefix:false,dec:3},
+    LYD:{symbol:"LYD",prefix:false,dec:3}, SDG:{symbol:"ج.س",prefix:false,dec:2},
+    MRU:{symbol:"UM",prefix:false,dec:2},
+    ZAR:{symbol:"R",prefix:true,dec:2}, NGN:{symbol:"₦",prefix:true,dec:2},
+    KES:{symbol:"KSh",prefix:false,dec:2}, GHS:{symbol:"GH₵",prefix:true,dec:2},
+    UGX:{symbol:"USh",prefix:false,dec:0}, TZS:{symbol:"TSh",prefix:false,dec:0},
+    RWF:{symbol:"FRw",prefix:false,dec:0}, ETB:{symbol:"Br",prefix:false,dec:2},
+    XOF:{symbol:"CFA",prefix:false,dec:0}, XAF:{symbol:"FCFA",prefix:false,dec:0},
+    MZN:{symbol:"MT",prefix:false,dec:2}, ZMW:{symbol:"ZK",prefix:false,dec:2},
+    BWP:{symbol:"P",prefix:false,dec:2}, NAD:{symbol:"N$",prefix:true,dec:2},
+    MGA:{symbol:"Ar",prefix:false,dec:0}, MUR:{symbol:"₨",prefix:true,dec:2},
+    AOA:{symbol:"Kz",prefix:false,dec:2},
+    INR:{symbol:"₹",prefix:true,dec:2}, PKR:{symbol:"₨",prefix:true,dec:0},
+    BDT:{symbol:"৳",prefix:true,dec:0}, LKR:{symbol:"Rs",prefix:true,dec:2},
+    NPR:{symbol:"रू",prefix:true,dec:2}, AFN:{symbol:"؋",prefix:false,dec:2},
+    MVR:{symbol:"Rf",prefix:false,dec:2},
+    JPY:{symbol:"¥",prefix:true,dec:0}, CNY:{symbol:"CN¥",prefix:true,dec:2},
+    KRW:{symbol:"₩",prefix:true,dec:0}, TWD:{symbol:"NT$",prefix:true,dec:2},
+    HKD:{symbol:"HK$",prefix:true,dec:2}, MOP:{symbol:"MOP$",prefix:true,dec:2},
+    THB:{symbol:"฿",prefix:true,dec:2}, VND:{symbol:"₫",prefix:false,dec:0},
+    IDR:{symbol:"Rp",prefix:true,dec:0}, MYR:{symbol:"RM",prefix:true,dec:2},
+    SGD:{symbol:"S$",prefix:true,dec:2}, PHP:{symbol:"₱",prefix:true,dec:2},
+    BND:{symbol:"B$",prefix:true,dec:2}, MMK:{symbol:"K",prefix:false,dec:0},
+    KHR:{symbol:"៛",prefix:false,dec:0}, LAK:{symbol:"₭",prefix:false,dec:0},
+    KZT:{symbol:"₸",prefix:false,dec:0}, UZS:{symbol:"so'm",prefix:false,dec:0},
+    KGS:{symbol:"с",prefix:false,dec:0}, TJS:{symbol:"SM",prefix:false,dec:2},
+    TMT:{symbol:"m",prefix:false,dec:2}, MNT:{symbol:"₮",prefix:false,dec:0},
+    AUD:{symbol:"AU$",prefix:true,dec:2}, NZD:{symbol:"NZ$",prefix:true,dec:2},
+    FJD:{symbol:"FJ$",prefix:true,dec:2}, PGK:{symbol:"K",prefix:false,dec:2},
   };
 
   const CURRENCY_PATTERNS = [
-    // Americas
-    { code: "USD", regex: /US\s*\$/i, weight: 100 },
-    { code: "CAD", regex: /\bCA\s*\$/i, weight: 95 },
-    { code: "BRL", regex: /\bR\s*\$\s*\d/i, weight: 90 },
-    { code: "MXN", regex: /\bMX\s*\$/i, weight: 90 },
-    { code: "ARS", regex: /\bAR\s*\$/i, weight: 85 },
-    { code: "CLP", regex: /\bCLP\s*\$/i, weight: 85 },
-    { code: "COP", regex: /\bCOP\s*\$/i, weight: 85 },
-    { code: "PEN", regex: /\bS\/\s*\d/i, weight: 85 },
-    { code: "UYU", regex: /\$U/i, weight: 80 },
-    { code: "PYG", regex: /₲/, weight: 75 },
-    { code: "BOB", regex: /\bBs\b/i, weight: 75 },
-    { code: "GTQ", regex: /\bQ\b/i, weight: 60 },
-    { code: "CRC", regex: /₡/, weight: 80 },
-    { code: "DOP", regex: /RD\$/i, weight: 80 },
-    { code: "JMD", regex: /J\$/i, weight: 75 },
-    { code: "TTD", regex: /TT\$/i, weight: 75 },
-
-    // Europe
-    { code: "EUR", regex: /€/, weight: 100 },
-    { code: "GBP", regex: /£/, weight: 100 },
-    { code: "CHF", regex: /\bCHF\b/i, weight: 90 },
-    { code: "SEK", regex: /\bSEK\b/i, weight: 85 },
-    { code: "NOK", regex: /\bNOK\b/i, weight: 85 },
-    { code: "DKK", regex: /\bDKK\b/i, weight: 85 },
-    { code: "ISK", regex: /\bISK\b/i, weight: 80 },
-    { code: "PLN", regex: /\bzł\b/i, weight: 85 },
-    { code: "CZK", regex: /\bKč\b/i, weight: 85 },
-    { code: "HUF", regex: /\bFt\b/i, weight: 85 },
-    { code: "RON", regex: /\blei\b/i, weight: 85 },
-    { code: "BGN", regex: /лв/i, weight: 85 },
-    { code: "HRK", regex: /\bkn\b/i, weight: 80 },
-    { code: "RSD", regex: /\bдин\b|\bRSD\b/i, weight: 80 },
-    { code: "MKD", regex: /ден/i, weight: 75 },
-    { code: "ALL", regex: /\bALL\b/i, weight: 75 },
-    { code: "BAM", regex: /\bKM\b/i, weight: 70 },
-    { code: "MDL", regex: /\bMDL\b/i, weight: 75 },
-    { code: "RUB", regex: /₽|\bRUB\b/i, weight: 90 },
-    { code: "UAH", regex: /₴|\bUAH\b/i, weight: 85 },
-    { code: "BYN", regex: /\bBYN\b/i, weight: 75 },
-    { code: "TRY", regex: /₺|\bTRY\b/i, weight: 85 },
-    { code: "GEL", regex: /₾/, weight: 80 },
-    { code: "AMD", regex: /֏/, weight: 75 },
-    { code: "AZN", regex: /₼/, weight: 75 },
-
-    // Middle East
-    { code: "AED", regex: /\bAED\b/i, weight: 95 },
-    { code: "SAR", regex: /\bSAR\b|﷼/i, weight: 95 },
-    { code: "QAR", regex: /\bQAR\b/i, weight: 90 },
-    { code: "KWD", regex: /\bKWD\b/i, weight: 90 },
-    { code: "BHD", regex: /\bBHD\b/i, weight: 90 },
-    { code: "OMR", regex: /\bOMR\b/i, weight: 90 },
-    { code: "JOD", regex: /\bJOD\b/i, weight: 85 },
-    { code: "ILS", regex: /₪|\bILS\b/i, weight: 90 },
-    { code: "IQD", regex: /\bIQD\b|د\.ع/i, weight: 80 },
-    { code: "IRR", regex: /\bIRR\b/i, weight: 75 },
-    { code: "LBP", regex: /\bLBP\b|ل\.ل/i, weight: 75 },
-    { code: "SYP", regex: /\bSYP\b|ل\.س/i, weight: 75 },
-    { code: "YER", regex: /\bYER\b/i, weight: 70 },
-
-    // North Africa
-    { code: "EGP", regex: /\bEGP\b|ج\.م/i, weight: 90 },
-    { code: "DZD", regex: /\bDA\b|د\.ج/i, weight: 90 },
-    { code: "MAD", regex: /\bMAD\b|د\.م/i, weight: 85 },
-    { code: "TND", regex: /\bTND\b|د\.ت/i, weight: 85 },
-    { code: "LYD", regex: /\bLYD\b/i, weight: 80 },
-    { code: "SDG", regex: /\bSDG\b|ج\.س/i, weight: 75 },
-    { code: "MRU", regex: /\bMRU\b/i, weight: 70 },
-
-    // Sub-Saharan Africa
-    { code: "ZAR", regex: /\bZAR\b|\bR\s*\d/i, weight: 85 },
-    { code: "NGN", regex: /₦|\bNGN\b/i, weight: 85 },
-    { code: "KES", regex: /\bKSh\b|\bKES\b/i, weight: 85 },
-    { code: "GHS", regex: /GH₵|\bGHS\b/i, weight: 80 },
-    { code: "UGX", regex: /\bUGX\b/i, weight: 75 },
-    { code: "TZS", regex: /\bTZS\b/i, weight: 75 },
-    { code: "RWF", regex: /\bRWF\b/i, weight: 75 },
-    { code: "ETB", regex: /\bETB\b/i, weight: 75 },
-    { code: "XOF", regex: /\bCFA\b|\bXOF\b/i, weight: 75 },
-    { code: "XAF", regex: /\bFCFA\b|\bXAF\b/i, weight: 75 },
-    { code: "MZN", regex: /\bMZN\b/i, weight: 70 },
-    { code: "ZMW", regex: /\bZMW\b/i, weight: 70 },
-    { code: "BWP", regex: /\bBWP\b/i, weight: 70 },
-    { code: "NAD", regex: /\bNAD\b/i, weight: 70 },
-    { code: "MUR", regex: /\bMUR\b/i, weight: 75 },
-    { code: "MGA", regex: /\bMGA\b/i, weight: 70 },
-    { code: "AOA", regex: /\bAOA\b/i, weight: 70 },
-
-    // South Asia
-    { code: "INR", regex: /₹|\bINR\b/i, weight: 95 },
-    { code: "PKR", regex: /\bPKR\b|\bRs\b/i, weight: 80 },
-    { code: "BDT", regex: /৳|\bBDT\b/i, weight: 80 },
-    { code: "LKR", regex: /\bLKR\b|\bRs\./i, weight: 75 },
-    { code: "NPR", regex: /रू|\bNPR\b/i, weight: 75 },
-    { code: "AFN", regex: /؋|\bAFN\b/i, weight: 70 },
-    { code: "MVR", regex: /\bMVR\b/i, weight: 70 },
-
-    // East Asia
-    { code: "JPY", regex: /¥|\bJPY\b/i, weight: 90 },
-    { code: "CNY", regex: /CN¥|\bCNY\b|￥/i, weight: 90 },
-    { code: "KRW", regex: /₩|\bKRW\b/i, weight: 90 },
-    { code: "TWD", regex: /\bNT\s*\$/i, weight: 85 },
-    { code: "HKD", regex: /\bHK\s*\$/i, weight: 85 },
-    { code: "MOP", regex: /\bMOP\b/i, weight: 75 },
-
-    // Southeast Asia
-    { code: "THB", regex: /฿|\bTHB\b/i, weight: 90 },
-    { code: "VND", regex: /₫|\bVND\b/i, weight: 90 },
-    { code: "IDR", regex: /\bRp\b|\bIDR\b/i, weight: 90 },
-    { code: "MYR", regex: /\bRM\b|\bMYR\b/i, weight: 90 },
-    { code: "SGD", regex: /\bS\$/i, weight: 90 },
-    { code: "PHP", regex: /₱|\bPHP\b/i, weight: 85 },
-    { code: "BND", regex: /\bBND\b/i, weight: 70 },
-    { code: "MMK", regex: /\bMMK\b/i, weight: 70 },
-    { code: "KHR", regex: /៛|\bKHR\b/i, weight: 70 },
-    { code: "LAK", regex: /₭|\bLAK\b/i, weight: 70 },
-
-    // Central Asia
-    { code: "KZT", regex: /₸|\bKZT\b/i, weight: 80 },
-    { code: "UZS", regex: /\bUZS\b/i, weight: 75 },
-    { code: "KGS", regex: /\bKGS\b/i, weight: 70 },
-    { code: "TJS", regex: /\bTJS\b/i, weight: 70 },
-    { code: "TMT", regex: /\bTMT\b/i, weight: 70 },
-    { code: "MNT", regex: /₮|\bMNT\b/i, weight: 70 },
-
-    // Oceania
-    { code: "AUD", regex: /\bAU\s*\$/i, weight: 95 },
-    { code: "NZD", regex: /\bNZ\s*\$/i, weight: 90 },
-    { code: "FJD", regex: /\bFJ\s*\$/i, weight: 75 },
-    { code: "PGK", regex: /\bPGK\b/i, weight: 70 },
+    {code:"USD",re:/US\s*\$/i,w:100},{code:"CAD",re:/\bCA\s*\$/i,w:95},
+    {code:"BRL",re:/\bR\s*\$\s*\d/i,w:90},{code:"MXN",re:/\bMX\s*\$/i,w:90},
+    {code:"ARS",re:/\bAR\s*\$/i,w:85},{code:"CLP",re:/\bCLP\s*\$/i,w:85},
+    {code:"COP",re:/\bCOP\s*\$/i,w:85},{code:"PEN",re:/\bS\/\s*\d/i,w:85},
+    {code:"EUR",re:/€/,w:100},{code:"GBP",re:/£/,w:100},
+    {code:"CHF",re:/\bCHF\b/i,w:90},{code:"SEK",re:/\bSEK\b/i,w:85},
+    {code:"NOK",re:/\bNOK\b/i,w:85},{code:"DKK",re:/\bDKK\b/i,w:85},
+    {code:"ISK",re:/\bISK\b/i,w:80},{code:"PLN",re:/\bzł\b/i,w:85},
+    {code:"CZK",re:/\bKč\b/i,w:85},{code:"HUF",re:/\bFt\b/i,w:85},
+    {code:"RON",re:/\blei\b/i,w:85},{code:"BGN",re:/лв/i,w:85},
+    {code:"HRK",re:/\bkn\b/i,w:80},{code:"RUB",re:/₽|\bRUB\b/i,w:90},
+    {code:"UAH",re:/₴|\bUAH\b/i,w:85},{code:"TRY",re:/₺|\bTRY\b/i,w:85},
+    {code:"RSD",re:/\bдин\b|\bRSD\b/i,w:80},{code:"MKD",re:/ден/i,w:75},
+    {code:"MDL",re:/\bMDL\b/i,w:75},{code:"BYN",re:/\bBYN\b/i,w:75},
+    {code:"GEL",re:/₾/,w:80},{code:"AMD",re:/֏/,w:75},{code:"AZN",re:/₼/,w:75},
+    {code:"AED",re:/\bAED\b/i,w:95},{code:"SAR",re:/\bSAR\b|﷼/i,w:95},
+    {code:"QAR",re:/\bQAR\b/i,w:90},{code:"KWD",re:/\bKWD\b/i,w:90},
+    {code:"BHD",re:/\bBHD\b/i,w:90},{code:"OMR",re:/\bOMR\b/i,w:90},
+    {code:"JOD",re:/\bJOD\b/i,w:85},{code:"ILS",re:/₪|\bILS\b/i,w:90},
+    {code:"EGP",re:/\bEGP\b|ج\.م/i,w:90},{code:"DZD",re:/\bDA\b|د\.ج/i,w:90},
+    {code:"MAD",re:/\bMAD\b|د\.م/i,w:85},{code:"TND",re:/\bTND\b|د\.ت/i,w:85},
+    {code:"LYD",re:/\bLYD\b/i,w:80},{code:"ZAR",re:/\bZAR\b/i,w:85},
+    {code:"NGN",re:/₦|\bNGN\b/i,w:85},{code:"KES",re:/\bKSh\b|\bKES\b/i,w:85},
+    {code:"GHS",re:/GH₵|\bGHS\b/i,w:80},{code:"UGX",re:/\bUGX\b/i,w:75},
+    {code:"TZS",re:/\bTZS\b/i,w:75},{code:"ETB",re:/\bETB\b/i,w:75},
+    {code:"XOF",re:/\bCFA\b|\bXOF\b/i,w:75},{code:"XAF",re:/\bFCFA\b|\bXAF\b/i,w:75},
+    {code:"MZN",re:/\bMZN\b/i,w:70},{code:"ZMW",re:/\bZMW\b/i,w:70},
+    {code:"BWP",re:/\bBWP\b/i,w:70},{code:"MUR",re:/\bMUR\b/i,w:75},
+    {code:"MGA",re:/\bMGA\b/i,w:70},{code:"AOA",re:/\bAOA\b/i,w:70},
+    {code:"INR",re:/₹|\bINR\b/i,w:95},{code:"PKR",re:/\bPKR\b/i,w:80},
+    {code:"BDT",re:/৳|\bBDT\b/i,w:80},{code:"LKR",re:/\bLKR\b/i,w:75},
+    {code:"NPR",re:/रू|\bNPR\b/i,w:75},{code:"AFN",re:/؋/,w:70},
+    {code:"JPY",re:/¥|\bJPY\b/i,w:90},{code:"CNY",re:/CN¥|\bCNY\b|￥/i,w:90},
+    {code:"KRW",re:/₩|\bKRW\b/i,w:90},{code:"TWD",re:/\bNT\s*\$/i,w:85},
+    {code:"HKD",re:/\bHK\s*\$/i,w:85},{code:"THB",re:/฿|\bTHB\b/i,w:90},
+    {code:"VND",re:/₫|\bVND\b/i,w:90},{code:"IDR",re:/\bRp\b|\bIDR\b/i,w:90},
+    {code:"MYR",re:/\bRM\b|\bMYR\b/i,w:90},{code:"SGD",re:/\bS\$/i,w:90},
+    {code:"PHP",re:/₱|\bPHP\b/i,w:85},{code:"MMK",re:/\bMMK\b/i,w:70},
+    {code:"KHR",re:/៛/,w:70},{code:"LAK",re:/₭/,w:70},
+    {code:"KZT",re:/₸|\bKZT\b/i,w:80},{code:"UZS",re:/\bUZS\b/i,w:75},
+    {code:"AUD",re:/\bAU\s*\$/i,w:95},{code:"NZD",re:/\bNZ\s*\$/i,w:90},
+    {code:"FJD",re:/\bFJ\s*\$/i,w:75},
   ];
 
   const LOCALE_CURRENCY = {
-    // Arabic
-    "ar-dz": "DZD", "ar-sa": "SAR", "ar-ae": "AED", "ar-eg": "EGP",
-    "ar-ma": "MAD", "ar-tn": "TND", "ar-kw": "KWD", "ar-qa": "QAR",
-    "ar-bh": "BHD", "ar-om": "OMR", "ar-jo": "JOD", "ar-lb": "LBP",
-    "ar-iq": "IQD", "ar-ly": "LYD", "ar-sd": "SDG", "ar-sy": "SYP",
-    "ar-ye": "YER", "ar-mr": "MRU",
-
-    // English
-    "en-us": "USD", "en-gb": "GBP", "en-ca": "CAD", "en-au": "AUD",
-    "en-nz": "NZD", "en-ie": "EUR", "en-za": "ZAR", "en-in": "INR",
-    "en-sg": "SGD", "en-hk": "HKD", "en-my": "MYR", "en-ph": "PHP",
-    "en-ng": "NGN", "en-ke": "KES", "en-gh": "GHS", "en-pk": "PKR",
-
-    // French
-    "fr-fr": "EUR", "fr-ca": "CAD", "fr-be": "EUR", "fr-ch": "CHF",
-    "fr-ma": "MAD", "fr-dz": "DZD", "fr-tn": "TND", "fr-sn": "XOF",
-    "fr-ci": "XOF", "fr-cm": "XAF",
-
-    // Spanish
-    "es-es": "EUR", "es-mx": "MXN", "es-ar": "ARS", "es-co": "COP",
-    "es-cl": "CLP", "es-pe": "PEN", "es-ve": "VES", "es-uy": "UYU",
-    "es-py": "PYG", "es-bo": "BOB", "es-ec": "USD", "es-gt": "GTQ",
-    "es-cr": "CRC", "es-pa": "PAB", "es-do": "DOP",
-
-    // German
-    "de-de": "EUR", "de-at": "EUR", "de-ch": "CHF",
-
-    // Italian / Portuguese / Dutch
-    "it-it": "EUR", "pt-br": "BRL", "pt-pt": "EUR", "nl-nl": "EUR", "nl-be": "EUR",
-
-    // Nordic
-    "sv-se": "SEK", "no-no": "NOK", "da-dk": "DKK", "fi-fi": "EUR", "is-is": "ISK",
-
-    // Eastern Europe
-    "ru-ru": "RUB", "uk-ua": "UAH", "be-by": "BYN", "pl-pl": "PLN",
-    "cs-cz": "CZK", "sk-sk": "EUR", "hu-hu": "HUF", "ro-ro": "RON",
-    "bg-bg": "BGN", "hr-hr": "HRK", "sr-rs": "RSD", "sl-si": "EUR",
-    "mk-mk": "MKD", "sq-al": "ALL", "bs-ba": "BAM", "md-md": "MDL",
-    "lt-lt": "EUR", "lv-lv": "EUR", "et-ee": "EUR",
-
-    // Asia
-    "zh-cn": "CNY", "zh-tw": "TWD", "zh-hk": "HKD",
-    "ja-jp": "JPY", "ko-kr": "KRW",
-    "hi-in": "INR", "bn-in": "INR", "ta-in": "INR", "te-in": "INR",
-    "ur-pk": "PKR", "bn-bd": "BDT",
-    "th-th": "THB", "vi-vn": "VND", "id-id": "IDR",
-    "ms-my": "MYR", "tl-ph": "PHP",
-    "my-mm": "MMK", "km-kh": "KHR", "lo-la": "LAK",
-
-    // Middle East
-    "tr-tr": "TRY", "he-il": "ILS", "fa-ir": "IRR",
-    "az-az": "AZN", "hy-am": "AMD", "ka-ge": "GEL",
-    "kk-kz": "KZT", "uz-uz": "UZS", "ky-kg": "KGS",
-    "tg-tj": "TJS", "tk-tm": "TMT", "mn-mn": "MNT",
+    "ar-dz":"DZD","ar-sa":"SAR","ar-ae":"AED","ar-eg":"EGP","ar-ma":"MAD",
+    "ar-tn":"TND","ar-kw":"KWD","ar-qa":"QAR","ar-bh":"BHD","ar-om":"OMR",
+    "ar-jo":"JOD","ar-lb":"LBP","ar-iq":"IQD","ar-ly":"LYD","ar-sd":"SDG",
+    "en-us":"USD","en-gb":"GBP","en-ca":"CAD","en-au":"AUD","en-nz":"NZD",
+    "en-ie":"EUR","en-za":"ZAR","en-in":"INR","en-sg":"SGD","en-hk":"HKD",
+    "en-my":"MYR","en-ph":"PHP","en-ng":"NGN","en-ke":"KES","en-pk":"PKR",
+    "fr-fr":"EUR","fr-ca":"CAD","fr-be":"EUR","fr-ch":"CHF","fr-ma":"MAD",
+    "fr-dz":"DZD","fr-tn":"TND","fr-sn":"XOF",
+    "es-es":"EUR","es-mx":"MXN","es-ar":"ARS","es-co":"COP","es-cl":"CLP",
+    "es-pe":"PEN","es-uy":"UYU","es-py":"PYG","es-bo":"BOB","es-ec":"USD",
+    "es-gt":"GTQ","es-cr":"CRC",
+    "de-de":"EUR","de-at":"EUR","de-ch":"CHF",
+    "it-it":"EUR","pt-br":"BRL","pt-pt":"EUR","nl-nl":"EUR",
+    "sv-se":"SEK","no-no":"NOK","da-dk":"DKK","fi-fi":"EUR","is-is":"ISK",
+    "ru-ru":"RUB","uk-ua":"UAH","pl-pl":"PLN","cs-cz":"CZK","hu-hu":"HUF",
+    "ro-ro":"RON","bg-bg":"BGN","hr-hr":"HRK","rs-rs":"RSD","mk-mk":"MKD",
+    "zh-cn":"CNY","zh-tw":"TWD","zh-hk":"HKD","ja-jp":"JPY","ko-kr":"KRW",
+    "hi-in":"INR","ur-pk":"PKR","bn-bd":"BDT","th-th":"THB","vi-vn":"VND",
+    "id-id":"IDR","ms-my":"MYR","tl-ph":"PHP",
+    "tr-tr":"TRY","he-il":"ILS","fa-ir":"IRR",
+    "az-az":"AZN","hy-am":"AMD","ka-ge":"GEL","kk-kz":"KZT","uz-uz":"UZS",
   };
-
-  // ═══════════════════════════════════════════════════════
-  // 🌍 SHIP-TO-COUNTRY (200+ countries)
-  // ═══════════════════════════════════════════════════════
 
   const LOCALE_COUNTRY = {
-    "ar-dz": "DZ", "ar-sa": "SA", "ar-ae": "AE", "ar-eg": "EG",
-    "ar-ma": "MA", "ar-tn": "TN", "ar-kw": "KW", "ar-qa": "QA",
-    "ar-bh": "BH", "ar-om": "OM", "ar-jo": "JO", "ar-lb": "LB",
-    "ar-iq": "IQ", "ar-ly": "LY", "ar-sd": "SD", "ar-sy": "SY",
-    "ar-ye": "YE", "ar-mr": "MR",
-
-    "en-us": "US", "en-gb": "GB", "en-ca": "CA", "en-au": "AU",
-    "en-nz": "NZ", "en-ie": "IE", "en-za": "ZA", "en-in": "IN",
-    "en-sg": "SG", "en-hk": "HK", "en-my": "MY", "en-ph": "PH",
-    "en-ng": "NG", "en-ke": "KE", "en-gh": "GH", "en-pk": "PK",
-
-    "fr-fr": "FR", "fr-ca": "CA", "fr-be": "BE", "fr-ch": "CH",
-    "fr-ma": "MA", "fr-dz": "DZ", "fr-tn": "TN",
-    "fr-sn": "SN", "fr-ci": "CI", "fr-cm": "CM",
-
-    "es-es": "ES", "es-mx": "MX", "es-ar": "AR", "es-co": "CO",
-    "es-cl": "CL", "es-pe": "PE", "es-ve": "VE", "es-uy": "UY",
-    "es-py": "PY", "es-bo": "BO", "es-ec": "EC", "es-gt": "GT",
-    "es-cr": "CR", "es-pa": "PA", "es-do": "DO",
-
-    "de-de": "DE", "de-at": "AT", "de-ch": "CH",
-    "it-it": "IT", "pt-br": "BR", "pt-pt": "PT",
-    "nl-nl": "NL", "nl-be": "BE",
-
-    "sv-se": "SE", "no-no": "NO", "da-dk": "DK", "fi-fi": "FI", "is-is": "IS",
-
-    "ru-ru": "RU", "uk-ua": "UA", "be-by": "BY", "pl-pl": "PL",
-    "cs-cz": "CZ", "sk-sk": "SK", "hu-hu": "HU", "ro-ro": "RO",
-    "bg-bg": "BG", "hr-hr": "HR", "sr-rs": "RS", "sl-si": "SI",
-    "mk-mk": "MK", "sq-al": "AL", "bs-ba": "BA", "md-md": "MD",
-    "lt-lt": "LT", "lv-lv": "LV", "et-ee": "EE",
-
-    "zh-cn": "CN", "zh-tw": "TW", "zh-hk": "HK",
-    "ja-jp": "JP", "ko-kr": "KR",
-    "hi-in": "IN", "bn-in": "IN", "ta-in": "IN", "te-in": "IN",
-    "ur-pk": "PK", "bn-bd": "BD",
-    "th-th": "TH", "vi-vn": "VN", "id-id": "ID",
-    "ms-my": "MY", "tl-ph": "PH",
-    "my-mm": "MM", "km-kh": "KH", "lo-la": "LA",
-
-    "tr-tr": "TR", "he-il": "IL", "fa-ir": "IR",
-    "az-az": "AZ", "hy-am": "AM", "ka-ge": "GE",
-    "kk-kz": "KZ", "uz-uz": "UZ", "ky-kg": "KG",
-    "tg-tj": "TJ", "tk-tm": "TM", "mn-mn": "MN",
+    "ar-dz":"DZ","ar-sa":"SA","ar-ae":"AE","ar-eg":"EG","ar-ma":"MA",
+    "ar-tn":"TN","ar-kw":"KW","ar-qa":"QA","ar-bh":"BH","ar-om":"OM",
+    "ar-jo":"JO","ar-lb":"LB","ar-iq":"IQ","ar-ly":"LY","ar-sd":"SD",
+    "en-us":"US","en-gb":"GB","en-ca":"CA","en-au":"AU","en-nz":"NZ",
+    "en-ie":"IE","en-za":"ZA","en-in":"IN","en-sg":"SG","en-hk":"HK",
+    "en-my":"MY","en-ph":"PH","en-ng":"NG","en-ke":"KE","en-pk":"PK",
+    "fr-fr":"FR","fr-ca":"CA","fr-be":"BE","fr-ch":"CH","fr-ma":"MA",
+    "fr-dz":"DZ","fr-tn":"TN","fr-sn":"SN",
+    "es-es":"ES","es-mx":"MX","es-ar":"AR","es-co":"CO","es-cl":"CL",
+    "es-pe":"PE","es-uy":"UY","es-py":"PY","es-bo":"BO","es-ec":"EC",
+    "es-gt":"GT","es-cr":"CR",
+    "de-de":"DE","de-at":"AT","de-ch":"CH",
+    "it-it":"IT","pt-br":"BR","pt-pt":"PT","nl-nl":"NL","nl-be":"BE",
+    "sv-se":"SE","no-no":"NO","da-dk":"DK","fi-fi":"FI","is-is":"IS",
+    "ru-ru":"RU","uk-ua":"UA","pl-pl":"PL","cs-cz":"CZ","hu-hu":"HU",
+    "ro-ro":"RO","bg-bg":"BG","hr-hr":"HR","rs-rs":"RS","mk-mk":"MK",
+    "zh-cn":"CN","zh-tw":"TW","zh-hk":"HK","ja-jp":"JP","ko-kr":"KR",
+    "hi-in":"IN","ur-pk":"PK","bn-bd":"BD","th-th":"TH","vi-vn":"VN",
+    "id-id":"ID","ms-my":"MY","tl-ph":"PH",
+    "tr-tr":"TR","he-il":"IL","fa-ir":"IR",
+    "az-az":"AZ","hy-am":"AM","ka-ge":"GE","kk-kz":"KZ","uz-uz":"UZ",
   };
 
-  // ═══════════════════════════════════════════════════════
-  // 🌐 TARGET LANGUAGES (AliExpress API)
-  // ═══════════════════════════════════════════════════════
-
-  const SUPPORTED_LANGUAGES = ["EN", "AR", "FR", "ES", "DE", "IT", "PT", "RU", "TR", "TH", "VI", "ID", "MS", "JA", "KO", "ZH", "HE", "NL", "PL"];
+  const SUPPORTED_LANGUAGES = ["EN","AR","FR","ES","DE","IT","PT","RU","TR","TH","VI","ID","MS","JA","KO","ZH","HE","NL","PL"];
 
   function formatPrice(v, currency) {
     if (v == null || isNaN(v) || v === 0) return "—";
     const info = CURRENCY_INFO[currency] || CURRENCY_INFO.USD;
-    const decimals = info.decimals ?? 2;
+    const d = info.dec || 2;
     const num = v.toLocaleString("en-US", {
-      minimumFractionDigits: decimals,
-      maximumFractionDigits: decimals,
+      minimumFractionDigits: d,
+      maximumFractionDigits: d,
     });
-    return info.prefix ? `${info.symbol}${num}` : `${num} ${info.symbol}`;
+    return info.prefix ? info.symbol + num : num + " " + info.symbol;
   }
 
   function detectCurrency() {
-    const txt = document.body.innerText || "";
-    const found = [];
-    for (const cur of CURRENCY_PATTERNS) {
-      if (cur.regex.test(txt)) {
-        found.push({ code: cur.code, weight: cur.weight });
-      }
-    }
-    if (found.length > 0) {
-      found.sort((a, b) => b.weight - a.weight);
-      return found[0].code;
-    }
     try {
+      const txt = document.body.innerText || "";
+      const found = [];
+      for (const c of CURRENCY_PATTERNS) {
+        if (c.re.test(txt)) found.push({ code: c.code, w: c.w });
+      }
+      if (found.length) {
+        found.sort((a, b) => b.w - a.w);
+        return found[0].code;
+      }
       const lang = (navigator.language || "en-US").toLowerCase();
       if (LOCALE_CURRENCY[lang]) return LOCALE_CURRENCY[lang];
       const base = lang.split("-")[0];
-      for (const [k, v] of Object.entries(LOCALE_CURRENCY)) {
-        if (k.startsWith(base + "-")) return v;
+      for (const k in LOCALE_CURRENCY) {
+        if (k.indexOf(base + "-") === 0) return LOCALE_CURRENCY[k];
       }
     } catch (_) {}
     return "USD";
@@ -483,8 +225,8 @@
       const lang = (navigator.language || "en-US").toLowerCase();
       if (LOCALE_COUNTRY[lang]) return LOCALE_COUNTRY[lang];
       const base = lang.split("-")[0];
-      for (const [k, v] of Object.entries(LOCALE_COUNTRY)) {
-        if (k.startsWith(base + "-")) return v;
+      for (const k in LOCALE_COUNTRY) {
+        if (k.indexOf(base + "-") === 0) return LOCALE_COUNTRY[k];
       }
     } catch (_) {}
     return "US";
@@ -494,7 +236,7 @@
     try {
       const lang = (navigator.language || "en-US").toUpperCase();
       const base = lang.split("-")[0];
-      if (SUPPORTED_LANGUAGES.includes(base)) return base;
+      if (SUPPORTED_LANGUAGES.indexOf(base) >= 0) return base;
     } catch (_) {}
     return "EN";
   }
@@ -509,10 +251,10 @@
 
     const results = [];
     const patterns = [
-      /(?:US|CA|AU|NZ|HK|NT|MX|AR|BR|CLP|COP|S|R|RM|Rp|S\$|B\$|FJ\s*\$/)\s*\$\s*([\d]+\.?\d{0,2})/g,
+      /(?:US|CA|AU|NZ|HK|NT|MX|AR|BR|CLP|COP|S|R|RM|Rp|S\$|B\$)\s*\$\s*([\d]+\.?\d{0,2})/g,
       /([€£¥₩₹₽₺₴₸₼₾֏₪₦₱₫฿៛₭﷼₲₡؋₮])\s*([\d]+\.?\d{0,2})/g,
       /(?:د\.ج|د\.م|د\.ت|ج\.م|ج\.س|ر\.س|ر\.ي|ل\.ل|ل\.س)\s*([\d]+\.?\d{0,2})/g,
-      /\b(?:USD|EUR|GBP|AED|SAR|QAR|KWD|BHD|OMR|JOD|ILS|EGP|DZD|MAD|TND|LYD|SDG|MRU|ZAR|NGN|KES|GHS|UGX|TZS|RWF|BIF|ETB|SOS|DJF|ERN|SSP|CDF|XOF|XAF|GMD|GNF|LRD|SLL|MRO|MWK|MZN|ZMW|ZWL|BWP|NAD|SZL|LSL|MGA|MUR|SCR|CVE|STN|AOA|CHF|SEK|NOK|DKK|ISK|PLN|CZK|HUF|RON|BGN|HRK|RSD|MKD|ALL|BAM|MDL|RUB|UAH|BYN|TRY|GEL|AMD|AZN|IQD|IRR|LBP|SYP|YER|JPY|CNY|KRW|INR|PKR|BDT|LKR|NPR|AFN|MVR|BTN|THB|VND|IDR|MYR|SGD|PHP|BND|MMK|KHR|LAK|TWD|HKD|MOP|AUD|NZD|FJD|PGK|WST|TOP|VUV|SBD|CAD|KZT|UZS|KGS|TJS|TMT|MNT|BRL|MXN|ARS|CLP|COP|PEN|UYU|PYG|BOB|VES|GTQ|CRC|PAB|DOP|JMD|TTD|BBD|BSD|BZD|HNL|NIO|CUP|TL)\b\s*([\d]+\.?\d{0,2})/gi,
+      /\b(?:USD|EUR|GBP|AED|SAR|QAR|KWD|BHD|OMR|JOD|ILS|EGP|DZD|MAD|TND|LYD|ZAR|NGN|KES|GHS|CHF|SEK|NOK|DKK|PLN|CZK|HUF|RON|BGN|RUB|UAH|TRY|JPY|CNY|KRW|INR|PKR|BDT|THB|VND|IDR|MYR|SGD|PHP|AUD|NZD|CAD|BRL|MXN|ARS|CLP|COP|PEN|KZT|UZS)\s*([\d]+\.?\d{0,2})/gi,
       /([\d]+\.?\d{0,2})\s*(?:USD|EUR|GBP|JPY|CNY|SAR|AED|DZD|MAD|EGP|RUB|TRY|UAH)\b/gi,
       /\$\s*([\d]+\.?\d{0,2})/g,
       /\b([\d]+\.[\d]{2})\b/g,
@@ -533,24 +275,16 @@
 
   function isExcludedContext(text) {
     if (!text) return true;
-    return /(\boff\s+on\b|\boff\s+us\b|coupon|voucher|reduction|with\s+coins|extra\s+\d+\s*%|installment|x\s*\$|×\s*\$|pieces|pcs|piece|bulk|wholesale|minimum|per\s+piece|\d+\s*\+|buy\s+now\s+pay|tax\s+excl|خصم|كوبون|عرض|شحن|قطعة)/i.test(text);
+    return /(\boff\s+on\b|\boff\s+us\b|coupon|voucher|reduction|with\s+coins|extra\s+\d+\s*%|installment|x\s*\$|×\s*\$|pieces|pcs|piece|bulk|wholesale|minimum|per\s+piece|\d+\s*\+|buy\s+now\s+pay|tax\s+excl)/i.test(text);
   }
 
   function applyWelcomeDeal(price, rootEl) {
     if (!price || !rootEl) return price;
     const txt = rootEl.innerText || "";
-    const patterns = [
-      /new\s+shoppers?\s+save\s+\$?\s*([\d.,]+)/i,
-      /اشترِ\s+الآن\s+وفر\s+([\d.,]+)/,
-      /économisez\s+([\d.,]+)/i,
-      /ahorra\s+([\d.,]+)/i,
-    ];
-    for (const re of patterns) {
-      const m = txt.match(re);
-      if (m) {
-        const save = parseFloat(m[1].replace(",", "."));
-        if (save > 0 && save < price) return Math.round((price - save) * 100) / 100;
-      }
+    const m = txt.match(/new\s+shoppers?\s+save\s+\$?\s*([\d.,]+)/i);
+    if (m) {
+      const save = parseFloat(m[1].replace(",", "."));
+      if (save > 0 && save < price) return Math.round((price - save) * 100) / 100;
     }
     return price;
   }
@@ -570,16 +304,21 @@
     for (const sel of sels) {
       const el = document.querySelector(sel);
       if (el) {
-        const t = el.innerText?.trim();
+        const t = el.innerText ? el.innerText.trim() : "";
         if (t && t.length > 8) return t;
       }
     }
-    return document.querySelector("meta[property='og:title']")?.getAttribute("content")?.trim() || "";
+    const meta = document.querySelector("meta[property='og:title']");
+    return meta ? (meta.getAttribute("content") || "").trim() : "";
   }
 
   function getImage() {
-    const c = document.querySelector("meta[property='og:image']")?.getAttribute("content");
-    return (c && c.startsWith("http")) ? c : "";
+    const meta = document.querySelector("meta[property='og:image']");
+    if (meta) {
+      const c = meta.getAttribute("content");
+      if (c && c.indexOf("http") === 0) return c;
+    }
+    return "";
   }
 
   function getSold() {
@@ -598,7 +337,8 @@
   }
 
   function getRating() {
-    for (const el of document.querySelectorAll("[aria-label*='star'], [aria-label*='rating']")) {
+    const els = document.querySelectorAll("[aria-label*='star'], [aria-label*='rating']");
+    for (const el of els) {
       const label = el.getAttribute("aria-label") || "";
       const m = label.match(/([\d.]+)\s*(out of|stars?|rating)/i);
       if (m) {
@@ -658,7 +398,7 @@
     for (const sel of sels) {
       const el = document.querySelector(sel);
       if (el) {
-        const t = el.innerText?.trim();
+        const t = el.innerText ? el.innerText.trim() : "";
         if (t && t.length > 2 && t.length < 60) return t;
       }
     }
@@ -667,30 +407,28 @@
 
   function detectProductType(title) {
     const t = (title || "").toLowerCase();
-    if (/\b(perfume|parfum|fragrance|عطر|عطور)\b/i.test(t)) return "perfume";
-    if (/\b(headphone|earphone|earbud|headset|سماع|سماعات|écouteur|casti)\b/i.test(t)) return "headphones";
-    if (/\b(phone|smartphone|mobile|هاتف|téléphone|teléfono)\b/i.test(t)) return "phone";
-    if (/\b(laptop|notebook|computer|كمبيوتر|ordinateur|computadora)\b/i.test(t)) return "laptop";
-    if (/\b(watch|smartwatch|ساعة|montre|reloj)\b/i.test(t)) return "watch";
-    if (/\b(charger|cable|شاحن|كابل|câble|cargador)\b/i.test(t)) return "charger";
-    if (/\b(usb|flash drive|pendrive|memory card|ذاكرة)\b/i.test(t)) return "storage";
-    if (/\b(camera|كاميرا|appareil photo|cámara)\b/i.test(t)) return "camera";
-    if (/\b(shoe|sneaker|حذاء|chaussure|zapato)\b/i.test(t)) return "shoes";
-    if (/\b(shirt|t-shirt|قميص|chemise|camisa)\b/i.test(t)) return "clothes";
-    if (/\b(bag|backpack|حقيبة|sac|bolsa)\b/i.test(t)) return "bag";
-    if (/\b(toy|لعبة|jouet|juguete)\b/i.test(t)) return "toy";
-    if (/\b(tool|أدوات|outil|herramienta)\b/i.test(t)) return "tool";
-    if (/\b(lamp|light|مصباح|lampe|lámpara)\b/i.test(t)) return "lighting";
-    if (/\b(fishing|صيد|pêche|pesca)\b/i.test(t)) return "fishing";
-    if (/\b(glass|glasses|نظار|verre|lunettes|gafas)\b/i.test(t)) return "glasses";
-    if (/\b(case|cover|حافظة|coque|funda)\b/i.test(t)) return "case";
-    if (/\b(drone|طائرة|drone|dron)\b/i.test(t)) return "drone";
-    if (/\b(keyboard|لوحة مفاتيح|clavier|teclado)\b/i.test(t)) return "keyboard";
-    if (/\b(mouse|ماوس|souris|ratón)\b/i.test(t)) return "mouse";
-    if (/\b(speaker|مكبر|haut-parleur|altavoz)\b/i.test(t)) return "speaker";
-    if (/\b(fan|مروحة|ventilateur|ventilador)\b/i.test(t)) return "fan";
-    if (/\b(car|سيارة|voiture|coche)\b/i.test(t)) return "car";
-    if (/\b(phone case|غطاء هاتف|coque|funda)\b/i.test(t)) return "phone_case";
+    if (/(perfume|parfum|fragrance|عطر|عطور)/i.test(t)) return "perfume";
+    if (/(headphone|earphone|earbud|headset|سماع|سماعات|écouteur|casti)/i.test(t)) return "headphones";
+    if (/(smartphone|mobile|هاتف|téléphone|teléfono)/i.test(t)) return "phone";
+    if (/(laptop|notebook|computer|كمبيوتر|ordinateur|computadora)/i.test(t)) return "laptop";
+    if (/(smartwatch|ساعة|montre|reloj)/i.test(t)) return "watch";
+    if (/(charger|cable|شاحن|كابل|câble|cargador)/i.test(t)) return "charger";
+    if (/(usb|flash drive|pendrive|memory card|ذاكرة)/i.test(t)) return "storage";
+    if (/(camera|كاميرا|appareil photo|cámara)/i.test(t)) return "camera";
+    if (/(sneaker|حذاء|chaussure|zapato)/i.test(t)) return "shoes";
+    if (/(shirt|t-shirt|قميص|chemise|camisa)/i.test(t)) return "clothes";
+    if (/(backpack|حقيبة|sac|bolsa)/i.test(t)) return "bag";
+    if (/(toy|لعبة|jouet|juguete)/i.test(t)) return "toy";
+    if (/(tool|أدوات|outil|herramienta)/i.test(t)) return "tool";
+    if (/(lamp|light|مصباح|lampe|lámpara)/i.test(t)) return "lighting";
+    if (/(fishing|صيد|pêche|pesca)/i.test(t)) return "fishing";
+    if (/(glasses|نظار|lunettes|gafas)/i.test(t)) return "glasses";
+    if (/(cover|case|حافظة|coque|funda)/i.test(t)) return "case";
+    if (/(drone|طائرة|dron)/i.test(t)) return "drone";
+    if (/(keyboard|لوحة مفاتيح|clavier|teclado)/i.test(t)) return "keyboard";
+    if (/(mouse|ماوس|souris|ratón)/i.test(t)) return "mouse";
+    if (/(speaker|مكبر|haut-parleur|altavoz)/i.test(t)) return "speaker";
+    if (/(fan|مروحة|ventilateur|ventilador)/i.test(t)) return "fan";
     return "general";
   }
 
@@ -698,7 +436,7 @@
     const title = getTitle();
     return {
       id: getProductId(),
-      title,
+      title: title,
       image: getImage(),
       price: getPrice(),
       currency: detectCurrency(),
@@ -713,7 +451,7 @@
   }
 
   // ═══════════════════════════════════════════════════════
-  // MODEL EXTRACTION
+  // MODEL & KEYWORDS
   // ═══════════════════════════════════════════════════════
 
   const STOP_WORDS = new Set([
@@ -725,21 +463,14 @@
     "piece","color","colors","size","sizes","model","series","version",
     "maximum","minimum","medium","direct","power","strong","small","large",
     "big","cheap","premium","professional","portable","rechargeable",
-    // Arabic
     "من","في","على","إلى","مع","عن","هذا","هذه","ذلك","التي","الذي","أو","و","ثم",
     "لكن","حتى","بعد","قبل","كل","بعض","أي","لا","ما","هو","هي","جديد","جديدة",
     "سعر","أسعار","شحن","مجاني","بيع","شراء","منتج","منتجات","عالية","جودة","أفضل",
-    // French
     "pour","avec","et","le","la","les","un","une","des","de","du","au","ce","cette",
     "ces","son","sa","ses","dans","sur","par","vers","est","sont","très","plus",
-    "moins","tout","tous","nouveau","nouvelle","meilleur",
-    // Spanish
+    "menos","moins","tout","tous","nouveau","nouvelle","meilleur",
     "para","con","y","el","los","las","una","del","al","este","esta","por","es",
-    "son","ser","muy","más","menos","todo","todos","nuevo","nueva","mejor",
-    // German
-    "für","mit","und","der","die","das","den","dem","des","ein","eine","einem",
-    "eines","dieser","diese","dieses","auf","zu","nach","ist","sind","sein",
-    "haben","sehr","mehr","weniger","alle","neu","neue","original","beste",
+    "son","ser","muy","más","todo","todos","nuevo","nueva","mejor",
   ]);
 
   const NOT_MODELS = new Set([
@@ -789,18 +520,13 @@
   function getPrimaryModel(title) {
     const models = extractModels(title);
     if (!models.length) return "";
-
     const scored = models.map(m => {
-      let score = 0;
-      score += m.length * 10;
-      const digits = (m.match(/\d/g) || []).length;
-      score += digits * 5;
-      const letters = (m.match(/[A-Z]/g) || []).length;
-      score += letters * 3;
+      let score = m.length * 10;
+      score += (m.match(/\d/g) || []).length * 5;
+      score += (m.match(/[A-Z]/g) || []).length * 3;
       if (/^[A-Z]+\d+$/.test(m)) score += 20;
       return { model: m, score };
     });
-
     scored.sort((a, b) => b.score - a.score);
     return scored[0].model;
   }
@@ -836,12 +562,11 @@
     const n2 = normalizeBrand(b2);
     if (!n1 || !n2) return false;
     if (n1 === n2) return true;
-    if (n1.includes(n2) || n2.includes(n1)) return true;
+    if (n1.indexOf(n2) >= 0 || n2.indexOf(n1) >= 0) return true;
     if (n1.length >= 4 && n2.length >= 4) {
       let match = 0;
       for (let i = 0; i < Math.min(n1.length, n2.length); i++) {
-        if (n1[i] === n2[i]) match++;
-        else break;
+        if (n1[i] === n2[i]) match++; else break;
       }
       if (match >= 4) return true;
     }
@@ -894,8 +619,8 @@
     }
 
     const titleUpper = title.toUpperCase();
-    const hasPrimaryModel = ctx.primaryModel && titleUpper.includes(ctx.primaryModel);
-    const modelsMatched = ctx.models.filter(m => titleUpper.includes(m)).length;
+    const hasPrimaryModel = ctx.primaryModel && titleUpper.indexOf(ctx.primaryModel) >= 0;
+    const modelsMatched = ctx.models.filter(m => titleUpper.indexOf(m) >= 0).length;
     const cardBrand = extractBrand(title);
     const bMatch = brandMatch(cardBrand, ctx.brand);
 
@@ -958,13 +683,13 @@
       _typeMatch: typeMatch,
       store: store || "AliExpress Seller",
       img: p.product_main_image_url || "",
-      price,
+      price: price,
       oldPrice: finalOld,
-      discount,
+      discount: discount,
       rating: rating > 0 && rating <= 5 ? +rating.toFixed(1) : 0,
       sold: parseInt(p.lastest_volume || p.volume || 0, 10),
       link: p.promotion_link || p.product_detail_url || "",
-      title,
+      title: title,
       similarity: confidence,
     };
   }
@@ -984,18 +709,16 @@
       if (seenIds.has(s._id)) continue;
       if (s._store && original && s._store === original) continue;
       if (s._store && seenStores.has(s._store)) continue;
-
       seenIds.add(s._id);
       if (s._store) seenStores.add(s._store);
       accepted.push(s);
       if (accepted.length >= 30) break;
     }
-
     return accepted;
   }
 
   // ═══════════════════════════════════════════════════════
-  // MULTI-LANGUAGE QUERIES
+  // QUERIES
   // ═══════════════════════════════════════════════════════
 
   function buildQueries(title, language, country) {
@@ -1006,167 +729,157 @@
     const queries = [];
     const seen = new Set();
 
-    function addQ(name, kw, priority = 5, page = 1, lang = language) {
+    function addQ(name, kw, priority, page, lang) {
       kw = (kw || "").trim();
       if (!kw || kw.length < 2) return;
+      page = page || 1;
+      lang = lang || language;
       const key = kw.toLowerCase() + "@" + page + "@" + lang;
       if (seen.has(key)) return;
       seen.add(key);
       queries.push({
-        name,
+        name: name,
         keywords: kw,
-        page,
+        page: page,
         pageSize: 50,
-        priority,
+        priority: priority || 5,
         language: lang,
       });
     }
 
-    // 🥇 P1: Model فقط (3 صفحات)
     if (primaryModel) {
-      addQ("⭐MODEL-p1", primaryModel, 1, 1);
-      addQ("⭐MODEL-p2", primaryModel, 1, 2);
-      addQ("⭐MODEL-p3", primaryModel, 1, 3);
+      addQ("MODEL-p1", primaryModel, 1, 1);
+      addQ("MODEL-p2", primaryModel, 1, 2);
+      addQ("MODEL-p3", primaryModel, 1, 3);
     }
 
-    // 🥈 P2: Brand + Model
     if (brand && primaryModel) {
-      addQ("⭐BRAND+MODEL", `${brand} ${primaryModel}`, 2);
+      addQ("BRAND+MODEL", brand + " " + primaryModel, 2, 1);
     }
 
-    // 🥉 P3: Model + keyword
     if (primaryModel && kws.length >= 1) {
-      addQ("MODEL+KW1", `${primaryModel} ${kws[0]}`, 3);
+      addQ("MODEL+KW1", primaryModel + " " + kws[0], 3, 1);
     }
 
-    // P4: Full Title
     const cleanTitle = title.replace(/[|/,،()\[\]]/g, " ").replace(/\s+/g, " ").trim();
     if (cleanTitle.length >= 15) {
-      addQ("FULL-TITLE", cleanTitle.slice(0, 100), 4);
+      addQ("FULL-TITLE", cleanTitle.slice(0, 100), 4, 1);
     }
 
-    // P5: All Models
     if (allModels.length >= 2) {
-      addQ("ALL-MODELS", allModels.slice(0, 4).join(" "), 5);
+      addQ("ALL-MODELS", allModels.slice(0, 4).join(" "), 5, 1);
     }
 
-    // P6: Title 6 words
     const titleWords = cleanTitle.split(/\s+/).filter(w => w.length > 2);
     if (titleWords.length >= 5) {
-      addQ("TITLE-6W", titleWords.slice(0, 6).join(" "), 6);
+      addQ("TITLE-6W", titleWords.slice(0, 6).join(" "), 6, 1);
     }
 
-    // P7: Brand + 2 keywords
     if (brand && kws.length >= 2) {
-      addQ("BRAND+2KW", `${brand} ${kws[0]} ${kws[1]}`, 7);
+      addQ("BRAND+2KW", brand + " " + kws[0] + " " + kws[1], 7, 1);
     }
 
-    // P8: Brand only
     if (brand) {
-      addQ("BRAND", brand, 8);
+      addQ("BRAND", brand, 8, 1);
     }
 
-    // P9: 3 keywords
     if (kws.length >= 3) {
-      addQ("KW3", kws.slice(0, 3).join(" "), 9);
+      addQ("KW3", kws.slice(0, 3).join(" "), 9, 1);
     }
 
-    // P10: 2 keywords
     if (kws.length >= 2) {
-      addQ("KW2", `${kws[0]} ${kws[1]}`, 10);
+      addQ("KW2", kws[0] + " " + kws[1], 10, 1);
     }
 
-    // P11: Model + Brand
     if (primaryModel && brand) {
-      addQ("MODEL+BRAND", `${primaryModel} ${brand}`, 11);
+      addQ("MODEL+BRAND", primaryModel + " " + brand, 11, 1);
     }
 
-    // P12: Title 10 words
-    if (titleWords.length >= 8) {
-      addQ("TITLE-10W", titleWords.slice(0, 10).join(" "), 12);
-    }
-
-    // P13: Model in other languages (للوصول لمنتجات بلغات أخرى)
     if (primaryModel && language !== "EN") {
-      addQ("MODEL-EN", primaryModel, 13, 1, "EN");
+      addQ("MODEL-EN", primaryModel, 12, 1, "EN");
     }
     if (primaryModel && language !== "AR") {
-      addQ("MODEL-AR", primaryModel, 14, 1, "AR");
+      addQ("MODEL-AR", primaryModel, 13, 1, "AR");
     }
 
     return queries.slice(0, 16);
   }
 
   async function fetchQueries(queries, country, currency) {
-    const res = await fetch(`${WORKER_URL}/api/deep-search`, {
+    const res = await fetch(WORKER_URL + "/api/deep-search", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ queries, shipToCountry: country, currency }),
+      body: JSON.stringify({ queries: queries, shipToCountry: country, currency: currency }),
     });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) throw new Error("HTTP " + res.status);
     const payload = await res.json();
     if (!payload.ok) throw new Error(payload.error || "API error");
     return payload.data;
   }
 
   // ═══════════════════════════════════════════════════════
-  // PANEL
+  // PANEL UI
   // ═══════════════════════════════════════════════════════
 
   function buildPanel() {
-    document.getElementById(PANEL_ID)?.remove();
+    const old = document.getElementById(PANEL_ID);
+    if (old) old.remove();
+
     const panel = document.createElement("div");
     panel.id = PANEL_ID;
     if (IS_RTL) panel.setAttribute("dir", "rtl");
 
-    panel.innerHTML = `
-      <div class="ss-header">
-        <div class="ss-header-left">
-          <div class="ss-logo">S</div>
-          <div>
-            <div class="ss-title">${T("title")}</div>
-            <div class="ss-subtitle" id="ss-source">${T("scanning")}</div>
-          </div>
-        </div>
-        <div class="ss-header-actions">
-          <button class="ss-btn-icon" data-action="refresh">↻</button>
-          <button class="ss-btn-icon" data-action="minimize">−</button>
-          <button class="ss-btn-icon" data-action="close">×</button>
-        </div>
-      </div>
-      <div class="ss-current">
-        <div class="ss-current-thumb"><img id="ss-cur-img" src="" alt=""></div>
-        <div class="ss-current-info">
-          <div class="ss-current-title" id="ss-cur-title">${T("scanning")}</div>
-          <div class="ss-current-meta" id="ss-cur-meta"></div>
-        </div>
-      </div>
-      <div class="ss-filters" id="ss-filters">
-        <button class="ss-chip ss-active" data-f="cheap">${T("cheapest")}</button>
-        <button class="ss-chip" data-f="best">${T("bestValue")}</button>
-        <button class="ss-chip" data-f="discount">${T("bestDiscount")}</button>
-        <button class="ss-chip" data-f="sold">${T("mostSold")}</button>
-      </div>
-      <div class="ss-list" id="ss-list"></div>
-      <div class="ss-footer">${T("footer")}</div>
-    `;
+    panel.innerHTML =
+      '<div class="ss-header">' +
+        '<div class="ss-header-left">' +
+          '<div class="ss-logo">S</div>' +
+          '<div>' +
+            '<div class="ss-title">' + T("title") + '</div>' +
+            '<div class="ss-subtitle" id="ss-source">' + T("scanning") + '</div>' +
+          '</div>' +
+        '</div>' +
+        '<div class="ss-header-actions">' +
+          '<button class="ss-btn-icon" data-action="refresh">↻</button>' +
+          '<button class="ss-btn-icon" data-action="minimize">−</button>' +
+          '<button class="ss-btn-icon" data-action="close">×</button>' +
+        '</div>' +
+      '</div>' +
+      '<div class="ss-current">' +
+        '<div class="ss-current-thumb"><img id="ss-cur-img" src="" alt=""></div>' +
+        '<div class="ss-current-info">' +
+          '<div class="ss-current-title" id="ss-cur-title">' + T("scanning") + '</div>' +
+          '<div class="ss-current-meta" id="ss-cur-meta"></div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="ss-filters" id="ss-filters">' +
+        '<button class="ss-chip ss-active" data-f="cheap">' + T("cheapest") + '</button>' +
+        '<button class="ss-chip" data-f="best">' + T("bestValue") + '</button>' +
+        '<button class="ss-chip" data-f="discount">' + T("bestDiscount") + '</button>' +
+        '<button class="ss-chip" data-f="sold">' + T("mostSold") + '</button>' +
+      '</div>' +
+      '<div class="ss-list" id="ss-list"></div>' +
+      '<div class="ss-footer">' + T("footer") + '</div>';
+
     document.body.appendChild(panel);
 
-    panel.querySelector("[data-action='close']").onclick = () => panel.classList.add("ss-hidden");
-    panel.querySelector("[data-action='minimize']").onclick = () => {
+    panel.querySelector("[data-action='close']").onclick = function () {
+      panel.classList.add("ss-hidden");
+    };
+    panel.querySelector("[data-action='minimize']").onclick = function () {
       minimized = !minimized;
       panel.classList.toggle("ss-minimized", minimized);
       panel.querySelector("[data-action='minimize']").textContent = minimized ? "+" : "−";
     };
-    panel.querySelector("[data-action='refresh']").onclick = () => {
-      if (isScanning) return;
-      doScan();
+    panel.querySelector("[data-action='refresh']").onclick = function () {
+      if (!isScanning) doScan();
     };
-    panel.querySelector("#ss-filters").onclick = (e) => {
+    panel.querySelector("#ss-filters").onclick = function (e) {
       const chip = e.target.closest(".ss-chip");
       if (!chip) return;
       activeFilter = chip.dataset.f;
-      panel.querySelectorAll(".ss-chip").forEach(c => c.classList.toggle("ss-active", c === chip));
+      panel.querySelectorAll(".ss-chip").forEach(function (c) {
+        c.classList.toggle("ss-active", c === chip);
+      });
       renderList();
     };
 
@@ -1195,10 +908,9 @@
       const currency = currentProduct.currency || "USD";
 
       console.log("═══════════════════════════════════════════");
-      console.log("[Smart Shopper] v52 COMPREHENSIVE");
+      console.log("[Smart Shopper] v53");
       console.log("[Smart Shopper] Title:", currentProduct.title.slice(0, 90));
-      console.log("[Smart Shopper] 🔥 Model:", primaryModel || "(none)");
-      console.log("[Smart Shopper] All Models:", allModels);
+      console.log("[Smart Shopper] Model:", primaryModel || "(none)");
       console.log("[Smart Shopper] Brand:", brand);
       console.log("[Smart Shopper] Language:", language);
       console.log("[Smart Shopper] Country:", country);
@@ -1207,8 +919,10 @@
       console.log("═══════════════════════════════════════════");
 
       const queries = buildQueries(currentProduct.title, language, country);
-      console.log(`[Smart Shopper] ${queries.length} queries:`);
-      queries.forEach(q => console.log(`  ${q.priority === 1 ? "🥇" : q.priority <= 2 ? "🥈" : q.priority <= 4 ? "🥉" : "  "} ${q.name}: "${q.keywords}" p${q.page} lang:${q.language}`));
+      console.log("[Smart Shopper] " + queries.length + " queries:");
+      queries.forEach(function (q) {
+        console.log("  " + q.name + ": \"" + q.keywords + "\" p" + q.page + " lang:" + q.language);
+      });
 
       if (!queries.length) {
         sellers = [];
@@ -1217,19 +931,19 @@
       }
 
       const data = await fetchQueries(queries, country, currency);
-      const raw = data?.products || [];
+      const raw = (data && data.products) || [];
       const t1 = performance.now();
-      console.log(`[Smart Shopper] Fetched ${raw.length} in ${Math.round(t1 - t0)}ms`);
+      console.log("[Smart Shopper] Fetched " + raw.length + " in " + Math.round(t1 - t0) + "ms");
 
       const ctx = {
         productId: currentProduct.id,
         title: currentProduct.title,
-        brand,
-        primaryModel,
+        brand: brand,
+        primaryModel: primaryModel,
         models: allModels,
-        keywords,
-        referencePrice,
-        originalStore,
+        keywords: keywords,
+        referencePrice: referencePrice,
+        originalStore: originalStore,
         productType: currentProduct.productType,
       };
 
@@ -1244,10 +958,10 @@
       }
 
       const t2 = performance.now();
-      console.log(`[Smart Shopper] Scored ${scored.length} (with model: ${withModel}) in ${Math.round(t2 - t1)}ms`);
+      console.log("[Smart Shopper] Scored " + scored.length + " (with model: " + withModel + ") in " + Math.round(t2 - t1) + "ms");
 
       const picked = pickBest(scored, ctx);
-      console.log(`[Smart Shopper] ✅ FINAL: ${picked.length} in ${Math.round(t2 - t0)}ms`);
+      console.log("[Smart Shopper] FINAL: " + picked.length + " in " + Math.round(t2 - t0) + "ms");
 
       sellers = picked;
       updateSourceLabel(sellers.length > 0 ? "smart" : "none");
@@ -1277,15 +991,17 @@
     if (img) {
       if (currentProduct.image) {
         img.src = currentProduct.image;
-        img.onerror = () => { img.style.display = "none"; };
-      } else img.style.display = "none";
+        img.onerror = function () { img.style.display = "none"; };
+      } else {
+        img.style.display = "none";
+      }
     }
     if (title) title.textContent = currentProduct.title || "—";
     if (meta) {
       const parts = [];
-      if (currentProduct.price != null) parts.push(`<strong>${formatPrice(currentProduct.price, currentProduct.currency)}</strong>`);
-      if (currentProduct.rating != null) parts.push(`<span class="ss-meta-pill ss-star">★ ${currentProduct.rating}</span>`);
-      if (currentProduct.sold != null) parts.push(`<span class="ss-meta-pill">${fmt(currentProduct.sold)} ${T("sold")}</span>`);
+      if (currentProduct.price != null) parts.push("<strong>" + formatPrice(currentProduct.price, currentProduct.currency) + "</strong>");
+      if (currentProduct.rating != null) parts.push('<span class="ss-meta-pill ss-star">★ ' + currentProduct.rating + '</span>');
+      if (currentProduct.sold != null) parts.push('<span class="ss-meta-pill">' + fmt(currentProduct.sold) + ' ' + T("sold") + '</span>');
       meta.innerHTML = parts.join(" ");
     }
   }
@@ -1293,39 +1009,39 @@
   function renderLoading() {
     const list = document.getElementById("ss-list");
     if (!list) return;
-    list.innerHTML = Array.from({ length: 4 }).map(() => `
-      <div class="ss-skeleton">
-        <div class="ss-sk ss-sk-thumb"></div>
-        <div class="ss-sk-lines">
-          <div class="ss-sk ss-sk-line"></div>
-          <div class="ss-sk ss-sk-line short"></div>
-        </div>
-      </div>
-    `).join("");
+    let html = "";
+    for (let i = 0; i < 4; i++) {
+      html += '<div class="ss-skeleton">' +
+        '<div class="ss-sk ss-sk-thumb"></div>' +
+        '<div class="ss-sk-lines">' +
+          '<div class="ss-sk ss-sk-line"></div>' +
+          '<div class="ss-sk ss-sk-line short"></div>' +
+        '</div>' +
+      '</div>';
+    }
+    list.innerHTML = html;
   }
 
   function renderEmpty() {
     const list = document.getElementById("ss-list");
     if (!list) return;
-    list.innerHTML = `
-      <div class="ss-empty">
-        <div class="ss-empty-icon">🎯</div>
-        <div class="ss-empty-title">No matches found</div>
-        <div class="ss-empty-sub">
-          This product seems unique on AliExpress.
-        </div>
-        <button class="ss-empty-btn" id="ss-retry">${T("scanAgain")}</button>
-      </div>
-    `;
-    document.getElementById("ss-retry")?.addEventListener("click", () => doScan());
+    list.innerHTML =
+      '<div class="ss-empty">' +
+        '<div class="ss-empty-icon">🎯</div>' +
+        '<div class="ss-empty-title">No matches found</div>' +
+        '<div class="ss-empty-sub">This product seems unique on AliExpress.</div>' +
+        '<button class="ss-empty-btn" id="ss-retry">' + T("scanAgain") + '</button>' +
+      '</div>';
+    const btn = document.getElementById("ss-retry");
+    if (btn) btn.addEventListener("click", function () { doScan(); });
   }
 
   function sortSellers(arr, f) {
-    const copy = [...arr];
-    if (f === "cheap") return copy.sort((a, b) => a.price - b.price);
-    if (f === "discount") return copy.sort((a, b) => (b.discount || 0) - (a.discount || 0));
-    if (f === "sold") return copy.sort((a, b) => (b.sold || 0) - (a.sold || 0));
-    return copy.sort((a, b) => b._confidence - a._confidence);
+    const copy = arr.slice();
+    if (f === "cheap") return copy.sort(function (a, b) { return a.price - b.price; });
+    if (f === "discount") return copy.sort(function (a, b) { return (b.discount || 0) - (a.discount || 0); });
+    if (f === "sold") return copy.sort(function (a, b) { return (b.sold || 0) - (a.sold || 0); });
+    return copy.sort(function (a, b) { return b._confidence - a._confidence; });
   }
 
   function renderList() {
@@ -1334,80 +1050,81 @@
     if (!sellers.length) return renderEmpty();
 
     const items = sortSellers(sellers, activeFilter);
-    const minPrice = Math.min(...items.map(s => s.price).filter(p => p > 0));
-    const currentPrice = currentProduct?.price || 0;
-    const currency = currentProduct?.currency || "USD";
+    const prices = items.map(function (s) { return s.price; }).filter(function (p) { return p > 0; });
+    const minPrice = prices.length ? Math.min.apply(null, prices) : 0;
+    const currentPrice = (currentProduct && currentProduct.price) || 0;
+    const currency = (currentProduct && currentProduct.currency) || "USD";
 
-    list.innerHTML = items.slice(0, 25).map((s, i) => {
+    let html = "";
+    for (let i = 0; i < Math.min(items.length, 25); i++) {
+      const s = items[i];
       const rank = i + 1;
       const isCheap = s.price === minPrice && s.price > 0;
       const cardClass = rank === 1 ? "ss-best" : (isCheap ? "ss-cheap" : "");
-      const rankClass = rank <= 3 ? `ss-r${rank}` : "";
+      const rankClass = rank <= 3 ? "ss-r" + rank : "";
 
       const conf = s._confidence || 0;
       const hasModel = s._hasPrimaryModel;
       const phraseLen = s._phraseLen || 0;
 
       let badge = "";
-      if (hasModel && phraseLen >= 4) badge = `<span class="ss-badge ss-badge-match" style="background:#dcfce7;color:#166534">★ MODEL</span>`;
-      else if (hasModel) badge = `<span class="ss-badge ss-badge-match" style="background:#ecfdf5;color:#065f46">✓ MODEL</span>`;
-      else if (phraseLen >= 4) badge = `<span class="ss-badge ss-badge-match" style="background:#dbeafe;color:#1e40af">◐ ${conf}%</span>`;
-      else if (conf >= 50) badge = `<span class="ss-badge ss-badge-match" style="background:#fef3c7;color:#92400e">◔ ${conf}%</span>`;
-      else if (activeFilter === "cheap" && rank === 1) badge = `<span class="ss-badge ss-badge-cheap">${T("cheapestTag")}</span>`;
-      else if (activeFilter === "discount" && rank === 1) badge = `<span class="ss-badge ss-badge-hot">${T("bestDeal")}</span>`;
-      else if (activeFilter === "sold" && rank === 1) badge = `<span class="ss-badge ss-badge-top">${T("mostSoldTag")}</span>`;
-      else if (activeFilter === "best" && rank === 1) badge = `<span class="ss-badge ss-badge-best">${T("bestValueTag")}</span>`;
-      else if (isCheap) badge = `<span class="ss-badge ss-badge-cheap">${T("bestPrice")}</span>`;
+      if (hasModel && phraseLen >= 4) badge = '<span class="ss-badge ss-badge-match" style="background:#dcfce7;color:#166534">★ MODEL</span>';
+      else if (hasModel) badge = '<span class="ss-badge ss-badge-match" style="background:#ecfdf5;color:#065f46">✓ MODEL</span>';
+      else if (phraseLen >= 4) badge = '<span class="ss-badge ss-badge-match" style="background:#dbeafe;color:#1e40af">◐ ' + conf + '%</span>';
+      else if (conf >= 50) badge = '<span class="ss-badge ss-badge-match" style="background:#fef3c7;color:#92400e">◔ ' + conf + '%</span>';
+      else if (activeFilter === "cheap" && rank === 1) badge = '<span class="ss-badge ss-badge-cheap">' + T("cheapestTag") + '</span>';
+      else if (activeFilter === "discount" && rank === 1) badge = '<span class="ss-badge ss-badge-hot">' + T("bestDeal") + '</span>';
+      else if (activeFilter === "sold" && rank === 1) badge = '<span class="ss-badge ss-badge-top">' + T("mostSoldTag") + '</span>';
+      else if (activeFilter === "best" && rank === 1) badge = '<span class="ss-badge ss-badge-best">' + T("bestValueTag") + '</span>';
+      else if (isCheap) badge = '<span class="ss-badge ss-badge-cheap">' + T("bestPrice") + '</span>';
 
-      const discountBadge = s.discount > 0 ? `<span class="ss-save-badge">-${s.discount}%</span>` : "";
-      const oldPriceHtml = s.oldPrice > 0 && s.oldPrice > s.price
-        ? `<span class="ss-price-old">${formatPrice(s.oldPrice, currency)}</span>` : "";
+      const discountBadge = s.discount > 0 ? '<span class="ss-save-badge">-' + s.discount + '%</span>' : "";
+      const oldPriceHtml = (s.oldPrice > 0 && s.oldPrice > s.price) ? '<span class="ss-price-old">' + formatPrice(s.oldPrice, currency) + '</span>' : "";
 
       let compareVs = "";
       if (currentPrice && s.price > 0) {
         const diff = s.price - currentPrice;
         const pct = Math.round(Math.abs(diff) / currentPrice * 100);
-        if (diff < 0) compareVs = `<span class="ss-compare-vs up">−${pct}%</span>`;
-        else if (diff > 0) compareVs = `<span class="ss-compare-vs down">+${pct}%</span>`;
-        else compareVs = `<span class="ss-compare-vs same">=</span>`;
+        if (diff < 0) compareVs = '<span class="ss-compare-vs up">−' + pct + '%</span>';
+        else if (diff > 0) compareVs = '<span class="ss-compare-vs down">+' + pct + '%</span>';
+        else compareVs = '<span class="ss-compare-vs same">=</span>';
       }
 
-      const subtitleItems = [];
-      if (s.rating > 0) subtitleItems.push(`<span class="ss-tag-inline rating">★ ${s.rating.toFixed(1)}</span>`);
-      if (s.sold > 0) subtitleItems.push(`<span class="ss-tag-inline sold">${fmt(s.sold)} ${T("sold")}</span>`);
+      const subItems = [];
+      if (s.rating > 0) subItems.push('<span class="ss-tag-inline rating">★ ' + s.rating.toFixed(1) + '</span>');
+      if (s.sold > 0) subItems.push('<span class="ss-tag-inline sold">' + fmt(s.sold) + ' ' + T("sold") + '</span>');
 
       const imgHtml = s.img
-        ? `<img src="${s.img}" loading="lazy" onerror="this.style.display='none';this.parentElement.innerHTML='🖼️'">`
-        : `🖼️`;
+        ? '<img src="' + s.img + '" loading="lazy" onerror="this.style.display=\'none\';this.parentElement.innerHTML=\'🖼️\'">'
+        : '🖼️';
 
-      return `
-        <div class="ss-card ${cardClass}" data-idx="${i}">
-          <div class="ss-card-row">
-            <div class="ss-rank ${rankClass}">${rank}</div>
-            <div class="ss-card-thumb">${imgHtml}</div>
-            <div class="ss-card-info">
-              <div class="ss-card-title">${esc(s.store)} ${badge}</div>
-              <div class="ss-card-subtitle">${subtitleItems.join('<span class="ss-sep">●</span>')}</div>
-            </div>
-            <div class="ss-price-col">
-              <div class="ss-price-line">
-                <span class="ss-price-now">${formatPrice(s.price, currency)}</span>
-                ${discountBadge}
-              </div>
-              <div style="display:flex;align-items:center;justify-content:flex-end;gap:5px">
-                ${oldPriceHtml}
-                ${compareVs}
-              </div>
-            </div>
-          </div>
-        </div>
-      `;
-    }).join("");
+      html +=
+        '<div class="ss-card ' + cardClass + '" data-idx="' + i + '">' +
+          '<div class="ss-card-row">' +
+            '<div class="ss-rank ' + rankClass + '">' + rank + '</div>' +
+            '<div class="ss-card-thumb">' + imgHtml + '</div>' +
+            '<div class="ss-card-info">' +
+              '<div class="ss-card-title">' + esc(s.store) + ' ' + badge + '</div>' +
+              '<div class="ss-card-subtitle">' + subItems.join('<span class="ss-sep">●</span>') + '</div>' +
+            '</div>' +
+            '<div class="ss-price-col">' +
+              '<div class="ss-price-line">' +
+                '<span class="ss-price-now">' + formatPrice(s.price, currency) + '</span>' +
+                discountBadge +
+              '</div>' +
+              '<div style="display:flex;align-items:center;justify-content:flex-end;gap:5px">' +
+                oldPriceHtml + compareVs +
+              '</div>' +
+            '</div>' +
+          '</div>' +
+        '</div>';
+    }
+    list.innerHTML = html;
 
-    list.querySelectorAll(".ss-card").forEach(card => {
-      card.addEventListener("click", () => {
+    list.querySelectorAll(".ss-card").forEach(function (card) {
+      card.addEventListener("click", function () {
         const item = items[+card.dataset.idx];
-        if (item?.link) window.open(item.link, "_blank", "noopener");
+        if (item && item.link) window.open(item.link, "_blank", "noopener");
       });
     });
   }
@@ -1416,7 +1133,7 @@
     const header = panel.querySelector(".ss-header");
     if (!header) return;
     let dragging = false, sx, sy, sl, st;
-    header.addEventListener("mousedown", (e) => {
+    header.addEventListener("mousedown", function (e) {
       if (e.target.closest(".ss-btn-icon")) return;
       e.preventDefault();
       dragging = true;
@@ -1438,7 +1155,9 @@
       panel.classList.remove("ss-dragging");
       document.removeEventListener("mousemove", onMove);
       document.removeEventListener("mouseup", onUp);
-      try { localStorage.setItem("ss-pos", JSON.stringify({ left: panel.style.left, top: panel.style.top })); } catch (_) {}
+      try {
+        localStorage.setItem("ss-pos", JSON.stringify({ left: panel.style.left, top: panel.style.top }));
+      } catch (_) {}
     }
   }
 
@@ -1446,22 +1165,30 @@
     try {
       const saved = localStorage.getItem("ss-pos");
       if (!saved) return;
-      const { left, top } = JSON.parse(saved);
-      if (left && top) { panel.style.right = "auto"; panel.style.left = left; panel.style.top = top; }
+      const pos = JSON.parse(saved);
+      if (pos.left && pos.top) {
+        panel.style.right = "auto";
+        panel.style.left = pos.left;
+        panel.style.top = pos.top;
+      }
     } catch (_) {}
   }
 
   async function run() {
-    await sleep(600);
-    currentProduct = extractProduct();
-    console.log("[Smart Shopper] v52 ready");
-    console.log("[Smart Shopper] Product:", currentProduct);
-    if (!currentProduct.title || currentProduct.title.length < 5) return;
-    buildPanel();
-    await doScan();
+    try {
+      await sleep(600);
+      currentProduct = extractProduct();
+      console.log("[Smart Shopper] v53 ready");
+      console.log("[Smart Shopper] Product:", currentProduct);
+      if (!currentProduct.title || currentProduct.title.length < 5) return;
+      buildPanel();
+      await doScan();
+    } catch (e) {
+      console.error("[Smart Shopper] run() error:", e);
+    }
   }
 
-  chrome.runtime.onMessage.addListener((msg, _s, res) => {
+  chrome.runtime.onMessage.addListener(function (msg, _s, res) {
     if (msg.type === "GET_PRODUCT") {
       try { res({ ok: true, product: extractProduct() }); }
       catch (e) { res({ ok: false, error: String(e) }); }
@@ -1470,5 +1197,5 @@
   });
 
   run();
-  console.log("[Smart Shopper] v52 ready.");
+  console.log("[Smart Shopper] v53 loaded.");
 })();
