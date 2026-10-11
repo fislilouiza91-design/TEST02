@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════════════════
-   Smart Shopper — Content Script (v38)
-   Multi-search + smart matching.
+   Smart Shopper — Content Script (v39)
+   STRICT model match + unique sellers only.
    ═══════════════════════════════════════════════════════ */
 
 (function () {
@@ -13,7 +13,7 @@
   const LANG = typeof SS_LANG !== "undefined" ? SS_LANG : "en";
   const IS_RTL = typeof SS_RTL !== "undefined" ? SS_RTL : false;
 
-  console.log(`[Smart Shopper] v38 | Lang: ${LANG}`);
+  console.log(`[Smart Shopper] v39 STRICT-MODEL | Lang: ${LANG}`);
 
   const PANEL_ID = "ss-floating-panel";
   const WORKER_URL = "https://cold-art-c5df.fislilouiza91.workers.dev";
@@ -190,7 +190,7 @@
   }
 
   // ═══════════════════════════════════════════════════════
-  // KEYWORDS
+  // ⭐ STRICT MODEL EXTRACTION
   // ═══════════════════════════════════════════════════════
 
   const STOP_WORDS = new Set([
@@ -223,14 +223,35 @@
     return "";
   }
 
+  /**
+   * ⭐ استخراج الموديلات: EQ5, EQ38, X21
+   * الشرط: 2-5 حروف + 1-5 أرقام (أو العكس)
+   */
   function extractModels(title) {
     if (!title) return [];
     const set = new Set();
-    let m = title.match(/\b[A-Z]{1,4}\d{1,5}[A-Z]?\b/g) || [];
+    // EQ5, EQ38, F80, X21
+    let m = title.match(/\b[A-Z]{2,5}\d{1,5}\b/g) || [];
     m.forEach(x => set.add(x.toUpperCase()));
-    m = title.match(/\b\d{1,5}[A-Z]{2,4}\b/g) || [];
+    // 5G, 5.3, 3.0
+    m = title.match(/\b\d{1,3}[A-Z]{2,5}\b/g) || [];
     m.forEach(x => set.add(x.toUpperCase()));
-    return Array.from(set).slice(0, 5);
+    // أرقام معطرة: 5.3, 4.0
+    m = title.match(/\b\d\.\d\b/g) || [];
+    m.forEach(x => set.add(x));
+    return Array.from(set).slice(0, 8);
+  }
+
+  /**
+   * ⭐ الموديل الأساسي (الأهم): أول موديل معقد
+   */
+  function getPrimaryModel(title) {
+    const models = extractModels(title);
+    // الأول من نوع EQ5 / EQ38 / F80
+    for (const m of models) {
+      if (/^[A-Z]{2,5}\d{1,5}$/.test(m)) return m;
+    }
+    return models[0] || "";
   }
 
   function countMatches(text, kw) {
@@ -249,42 +270,22 @@
     return c;
   }
 
-  /**
-   * ⭐ بناء 3 كلمات بحث مختلفة (للبحث المتعدد)
-   */
   function buildSearchQueries(title) {
     const brand = extractBrand(title);
-    const models = extractModels(title);
-    const kws = getKeywords(title);
-
+    const primaryModel = getPrimaryModel(title);
     const queries = new Set();
 
-    // 1) brand + 2 models
-    if (brand && models.length >= 2) {
-      queries.add(`${brand} ${models.slice(0, 2).join(" ")}`);
-    }
+    // 1) brand + primary model (الأهم)
+    if (brand && primaryModel) queries.add(`${brand} ${primaryModel}`);
 
-    // 2) brand + top keywords (2 words)
-    if (brand && kws.length >= 2) {
-      queries.add(`${brand} ${kws.slice(0, 2).join(" ")}`);
-    }
+    // 2) primary model alone
+    if (primaryModel) queries.add(primaryModel);
 
-    // 3) brand + 1 model
-    if (brand && models.length) {
-      queries.add(`${brand} ${models[0]}`);
-    }
+    // 3) brand + 2 keywords
+    const kws = getKeywords(title);
+    if (brand && kws.length >= 2) queries.add(`${brand} ${kws.slice(0, 2).join(" ")}`);
 
-    // 4) top 3 keywords
-    if (kws.length >= 3) {
-      queries.add(kws.slice(0, 3).join(" "));
-    }
-
-    // 5) top 2 keywords
-    if (kws.length >= 2) {
-      queries.add(kws.slice(0, 2).join(" "));
-    }
-
-    return Array.from(queries).slice(0, 3); // حد أقصى 3
+    return Array.from(queries).slice(0, 3);
   }
 
   async function searchProducts(keyword) {
@@ -303,48 +304,80 @@
   }
 
   // ═══════════════════════════════════════════════════════
-  // MAP + FILTER
+  // ⭐ STRICT FILTER — Model must match!
   // ═══════════════════════════════════════════════════════
 
-  function mapAndFilter(p, currentKeywords, currentBrand, currentModels, referencePrice, seenIds) {
+  function mapAndFilter(p, ctx, seenIds, seenStores) {
     const price = parseFloat(p.target_sale_price || p.sale_price || 0);
     const oldP = parseFloat(p.target_original_price || p.original_price || 0);
     const rating = parseFloat(String(p.evaluate_rate || "0").replace("%", "")) / 20;
     const title = p.product_title || p.product_name || "";
     const id = String(p.product_id || "");
+    const store = (p.shop_name || p.store_name || "").trim();
 
     if (!id || !price || !title) return null;
-    if (id === currentProduct.id) return null;
+    if (id === ctx.productId) return null;
     if (seenIds.has(id)) return null;
 
-    const cardBrand = extractBrand(title);
-    const brandMatch = currentBrand && cardBrand && currentBrand === cardBrand;
-    const modelMatches = countModelMatches(title, currentModels);
-    const kwMatches = countMatches(title, currentKeywords);
-
-    // ⭐ فلتر مرن: brand OR 1 model OR 1 keyword
-    const passes = brandMatch || modelMatches >= 1 || kwMatches >= 1;
-    if (!passes) return null;
-
-    // ⭐ فلتر السعر: 25% - 500%
-    if (referencePrice > 0) {
-      const ratio = price / referencePrice;
-      if (ratio < 0.25 || ratio > 5.0) return null;
+    // ⭐ فلتر 1: نفس المتجر → رفض (نريد بائعين مختلفين)
+    if (store && ctx.originalStore && store.toLowerCase() === ctx.originalStore.toLowerCase()) {
+      console.log(`[Smart Shopper] ❌ Same store: "${store}"`);
+      return null;
     }
+
+    // ⭐ فلتر 2: الموديل الأساسي يجب أن يكون موجوداً
+    const titleUpper = title.toUpperCase();
+    const primaryModelMatch = ctx.primaryModel && titleUpper.includes(ctx.primaryModel);
+    const anyModelMatch = ctx.models.length > 0 && countModelMatches(title, ctx.models) >= 1;
+
+    if (ctx.primaryModel && !primaryModelMatch) {
+      // ⭐ لا يوجد الموديل الأساسي → رفض (إلا إذا كان model آخر)
+      if (!anyModelMatch) {
+        console.log(`[Smart Shopper] ❌ No model "${ctx.primaryModel}": "${title.slice(0, 40)}"`);
+        return null;
+      }
+    }
+
+    // ⭐ فلتر 3: نفس الماركة
+    const cardBrand = extractBrand(title);
+    const brandMatch = ctx.brand && cardBrand && ctx.brand === cardBrand;
+    if (!brandMatch && !primaryModelMatch) {
+      console.log(`[Smart Shopper] ❌ No brand match: "${title.slice(0, 40)}"`);
+      return null;
+    }
+
+    // ⭐ فلتر 4: السعر 20% - 500%
+    if (ctx.referencePrice > 0) {
+      const ratio = price / ctx.referencePrice;
+      if (ratio < 0.2 || ratio > 5.0) {
+        console.log(`[Smart Shopper] ❌ Price $${price} (ratio ${ratio.toFixed(2)})`);
+        return null;
+      }
+    }
+
+    // ⭐ منع تكرار المتاجر
+    if (store && seenStores.has(store.toLowerCase())) {
+      console.log(`[Smart Shopper] ❌ Duplicate store: "${store}"`);
+      return null;
+    }
+    if (store) seenStores.add(store.toLowerCase());
 
     const finalOld = (oldP > price && price > 0) ? oldP : 0;
     const discount = finalOld > 0 ? Math.round((1 - price / finalOld) * 100) : 0;
+    const kwMatches = countMatches(title, ctx.keywords);
 
-    // ⭐ حساب النقاط
+    // ⭐ النقاط
     const score =
-      (brandMatch ? 40 : 0) +
-      Math.min(modelMatches * 20, 40) +
-      Math.min(kwMatches * 8, 24);
+      (primaryModelMatch ? 50 : 0) +
+      (brandMatch ? 30 : 0) +
+      Math.min(kwMatches * 5, 20);
 
     seenIds.add(id);
 
+    console.log(`[Smart Shopper] ✅ "${title.slice(0, 50)}" (store: ${store}, score: ${score})`);
+
     return {
-      store: p.shop_name || p.store_name || "AliExpress Seller",
+      store: store || "AliExpress Seller",
       img: p.product_main_image_url || "",
       price,
       oldPrice: finalOld,
@@ -354,20 +387,19 @@
       link: p.promotion_link || p.product_detail_url || "",
       title,
       similarity: Math.min(score, 100),
+      primaryModelMatch,
       brandMatch,
-      modelMatches,
       kwMatches,
     };
   }
 
   function rankProducts(products) {
     return products.map(p => {
-      let rank = p.similarity * 0.7;
-      if (p.rating >= 4.5) rank += 8;
-      else if (p.rating >= 4) rank += 4;
-      if (p.sold >= 500) rank += 8;
-      else if (p.sold >= 100) rank += 5;
-      else if (p.sold >= 20) rank += 2;
+      let rank = p.similarity * 0.8;
+      if (p.rating >= 4.5) rank += 5;
+      else if (p.rating >= 4) rank += 3;
+      if (p.sold >= 500) rank += 5;
+      else if (p.sold >= 100) rank += 3;
       return { ...p, _rank: rank };
     }).sort((a, b) => {
       if (Math.abs(b._rank - a._rank) > 2) return b._rank - a._rank;
@@ -445,51 +477,66 @@
     renderLoading();
 
     try {
-      const currentKeywords = getKeywords(currentProduct.title);
-      const currentBrand = extractBrand(currentProduct.title);
-      const currentModels = extractModels(currentProduct.title);
+      const brand = extractBrand(currentProduct.title);
+      const primaryModel = getPrimaryModel(currentProduct.title);
+      const models = extractModels(currentProduct.title);
+      const keywords = getKeywords(currentProduct.title);
       const referencePrice = currentProduct.price;
 
+      // ⭐ استخراج اسم المتجر الأصلي
+      let originalStore = "";
+      const storeEl = document.querySelector("[class*='store-name'], [class*='seller-name'], [class*='storeName']");
+      if (storeEl) originalStore = storeEl.innerText.trim();
+
       console.log("═══════════════════════════════════════════");
+      console.log("[Smart Shopper] v39 STRICT MODEL");
       console.log("[Smart Shopper] Product:", currentProduct.title.slice(0, 60));
-      console.log("[Smart Shopper] Brand:", currentBrand);
-      console.log("[Smart Shopper] Models:", currentModels);
-      console.log("[Smart Shopper] Keywords:", currentKeywords.slice(0, 6));
+      console.log("[Smart Shopper] Brand:", brand);
+      console.log("[Smart Shopper] Primary Model:", primaryModel);
+      console.log("[Smart Shopper] All Models:", models);
+      console.log("[Smart Shopper] Original Store:", originalStore);
       console.log("═══════════════════════════════════════════");
 
-      // ⭐ بناء 3 كلمات بحث
-      const queries = buildSearchQueries(currentProduct.title);
-      console.log("[Smart Shopper] Search queries:", queries);
-
-      if (!queries.length) {
+      if (!primaryModel) {
+        console.log("[Smart Shopper] ⚠️ No model found → cannot search");
         sellers = [];
         renderEmpty();
         return;
       }
 
-      // ⭐ 3 عمليات بحث متوازية
+      const queries = buildSearchQueries(currentProduct.title);
+      console.log("[Smart Shopper] Queries:", queries);
+
+      const ctx = {
+        productId: currentProduct.id,
+        brand,
+        primaryModel,
+        models,
+        keywords,
+        referencePrice,
+        originalStore,
+      };
+
       const seenIds = new Set();
+      const seenStores = new Set();
       const allResults = [];
 
       for (const q of queries) {
         try {
-          console.log(`[Smart Shopper] 🔎 Searching: "${q}"`);
+          console.log(`[Smart Shopper] 🔎 "${q}"`);
           const raw = await searchProducts(q);
-          console.log(`[Smart Shopper]   → ${raw.length} results`);
+          console.log(`[Smart Shopper]   → ${raw.length} raw`);
 
           for (const p of raw) {
-            const mapped = mapAndFilter(p, currentKeywords, currentBrand, currentModels, referencePrice, seenIds);
-            if (mapped) {
-              console.log(`[Smart Shopper]   ✅ "${mapped.title.slice(0, 40)}" (score: ${mapped.similarity})`);
-              allResults.push(mapped);
-            }
+            const mapped = mapAndFilter(p, ctx, seenIds, seenStores);
+            if (mapped) allResults.push(mapped);
           }
         } catch (e) {
           console.warn(`[Smart Shopper] Query failed: "${q}"`, e.message);
         }
       }
 
-      console.log(`[Smart Shopper] ✅ Total: ${allResults.length}`);
+      console.log(`[Smart Shopper] ✅ Final: ${allResults.length}`);
 
       sellers = rankProducts(allResults);
       updateSourceLabel(sellers.length > 0 ? "smart" : "none");
@@ -552,9 +599,9 @@
     list.innerHTML = `
       <div class="ss-empty">
         <div class="ss-empty-icon">🎯</div>
-        <div class="ss-empty-title">No similar products found</div>
+        <div class="ss-empty-title">No same product found</div>
         <div class="ss-empty-sub">
-          AliExpress doesn't list this product from other sellers right now.
+          AliExpress doesn't list this exact product from other sellers.
         </div>
         <button class="ss-empty-btn" id="ss-retry">${T("scanAgain")}</button>
       </div>
@@ -687,7 +734,7 @@
   async function run() {
     await sleep(800);
     currentProduct = extractProduct();
-    console.log("[Smart Shopper] v38 ready");
+    console.log("[Smart Shopper] v39 ready");
     if (!currentProduct.title || currentProduct.title.length < 5) return;
     buildPanel();
     await doScan();
@@ -702,5 +749,5 @@
   });
 
   run();
-  console.log("[Smart Shopper] v38 ready.");
+  console.log("[Smart Shopper] v39 ready.");
 })();
