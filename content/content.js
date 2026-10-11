@@ -1,6 +1,7 @@
 /* ═══════════════════════════════════════════════════════
-   Smart Shopper — Content Script (v43 MEGA)
+   Smart Shopper — Content Script (v44 MEGA)
    5-tier progressive filter + 30 parallel queries.
+   + Accurate price fetch on click.
    ═══════════════════════════════════════════════════════ */
 
 (function () {
@@ -13,14 +14,17 @@
   const LANG = typeof SS_LANG !== "undefined" ? SS_LANG : "en";
   const IS_RTL = typeof SS_RTL !== "undefined" ? SS_RTL : false;
 
-  console.log(`[Smart Shopper] v43 MEGA | Lang: ${LANG}`);
+  console.log(`[Smart Shopper] v44 MEGA | Lang: ${LANG}`);
 
   const PANEL_ID = "ss-floating-panel";
   const WORKER_URL = "https://cold-art-c5df.fislilouiza91.workers.dev";
+  
+  // ⭐ رمز البلد للشحن - غيّره حسب بلدك (DZ للجزائر، SA للسعودية، EG لمصر، US لأمريكا)
+  const SHIP_TO_COUNTRY = "DZ";
 
   let currentProduct = null;
   let sellers = [];
-  let activeFilter = "best"; // ⭐ تم التعديل: الفلتر الافتراضي هو "أفضل قيمة"
+  let activeFilter = "best"; // ⭐ الفلتر الافتراضي هو "أفضل قيمة"
   let minimized = false;
   let isScanning = false;
 
@@ -345,12 +349,83 @@
     const res = await fetch(`${WORKER_URL}/api/deep-search`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ queries }),
+      body: JSON.stringify({ 
+        queries,
+        currency: detectCurrency(),
+        country: SHIP_TO_COUNTRY // ⭐ تمرير البلد للـ Worker
+      }),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const payload = await res.json();
     if (!payload.ok) throw new Error(payload.error || "API error");
     return payload.data;
+  }
+
+  // ═══════════════════════════════════════════════════════
+  // ⭐⭐⭐ NEW: جلب السعر الدقيق عند النقر
+  // ═══════════════════════════════════════════════════════
+
+  async function fetchAccuratePriceAndOpen(productId, fallbackUrl, cardElement) {
+    // إظهار مؤشر تحميل على البطاقة
+    if (cardElement) {
+      cardElement.style.opacity = "0.6";
+      cardElement.style.pointerEvents = "none";
+    }
+
+    try {
+      console.log(`[Smart Shopper] Fetching accurate price for ID: ${productId}`);
+      
+      const res = await fetch(`${WORKER_URL}/api/product-details`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          product_ids: [productId],
+          currency: detectCurrency(),
+          country: SHIP_TO_COUNTRY
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.ok && data.data.products && data.data.products.length > 0) {
+          const dp = data.data.products[0];
+          
+          // محاولة استخراج السعر الدقيق من حقول متعددة
+          const accuratePrice = parseFloat(
+            dp.target_sale_price || 
+            dp.sale_price || 
+            dp.app_sale_price || 
+            dp.original_price || 
+            0
+          );
+          
+          console.log(`[Smart Shopper] ✅ Accurate price: ${accuratePrice} (was: ${dp.target_original_price || "N/A"})`);
+          
+          // تحديث السعر في البطاقة قبل فتح الرابط
+          if (accuratePrice > 0 && cardElement) {
+            const priceEl = cardElement.querySelector(".ss-price-now");
+            if (priceEl) {
+              priceEl.textContent = formatPrice(accuratePrice, detectCurrency());
+              priceEl.style.transition = "all 0.3s";
+              priceEl.style.color = "#10b981";
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.error("[Smart Shopper] Error fetching accurate price:", e);
+    } finally {
+      // إعادة تفعيل البطاقة
+      if (cardElement) {
+        cardElement.style.opacity = "1";
+        cardElement.style.pointerEvents = "auto";
+      }
+    }
+
+    // فتح الرابط
+    if (fallbackUrl) {
+      window.open(fallbackUrl, "_blank", "noopener");
+    }
   }
 
   // ═══════════════════════════════════════════════════════
@@ -445,14 +520,12 @@
   }
 
   function pickProgressive(scored, ctx) {
-    // نبدأ من الطبقة 1 ونزيد حتى نصل 5 نتائج
     const seenIds = new Set();
     const seenStores = new Set();
     const seenHashes = new Set();
     const accepted = [];
     const storesOriginal = ctx.originalStore.toLowerCase();
 
-    // ترتيب حسب tier أولاً ثم score
     scored.sort((a, b) => {
       if (a._tier !== b._tier) return a._tier - b._tier;
       return b._score - a._score;
@@ -460,14 +533,8 @@
 
     for (const s of scored) {
       if (seenIds.has(s._id)) continue;
-
-      // استبعاد المتجر الأصلي
       if (s._store && storesOriginal && s._store === storesOriginal) continue;
-
-      // منع تكرار المتجر (إلا إذا tier=1 مع hash match)
       if (s._tier > 1 && s._store && seenStores.has(s._store)) continue;
-
-      // منع تكرار الصورة
       if (s._imageHash && seenHashes.has(s._imageHash) && !s.isHashMatch) continue;
 
       seenIds.add(s._id);
@@ -475,8 +542,6 @@
       if (s._imageHash) seenHashes.add(s._imageHash);
 
       accepted.push(s);
-
-      // حد أقصى 20 نتيجة
       if (accepted.length >= 20) break;
     }
 
@@ -529,7 +594,7 @@
       </div>
       <div class="ss-filters" id="ss-filters">
         <button class="ss-chip" data-f="cheap">${T("cheapest")}</button>
-        <button class="ss-chip ss-active" data-f="best">${T("bestValue")}</button> <!-- ⭐ تم التعديل هنا -->
+        <button class="ss-chip ss-active" data-f="best">${T("bestValue")}</button>
         <button class="ss-chip" data-f="discount">${T("bestDiscount")}</button>
         <button class="ss-chip" data-f="sold">${T("mostSold")}</button>
       </div>
@@ -574,7 +639,7 @@
       const imageHash = currentProduct.imageHash || "";
 
       console.log("═══════════════════════════════════════════");
-      console.log("[Smart Shopper] v43 MEGA");
+      console.log("[Smart Shopper] v44 MEGA");
       console.log("[Smart Shopper] Product:", currentProduct.title.slice(0, 60));
       console.log("[Smart Shopper] Brand:", brand);
       console.log("[Smart Shopper] Primary Model:", primaryModel);
@@ -606,7 +671,6 @@
         imageHash,
       };
 
-      // نقيّم كل المنتجات
       const scored = [];
       for (const p of raw) {
         const s = scoreProduct(p, ctx);
@@ -615,12 +679,10 @@
 
       console.log(`[Smart Shopper] Passed scoring: ${scored.length}`);
 
-      // توزيع حسب tier
       const tiers = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
       scored.forEach(s => tiers[s._tier]++);
       console.log("[Smart Shopper] Tiers:", tiers);
 
-      // ⭐ 5-tier progressive pick
       const picked = pickProgressive(scored, ctx);
       console.log(`[Smart Shopper] ✅ FINAL: ${picked.length}`);
 
@@ -749,7 +811,7 @@
         : `🖼️`;
 
       return `
-        <div class="ss-card ${cardClass}" data-idx="${i}">
+        <div class="ss-card ${cardClass}" data-idx="${i}" data-product-id="${esc(s._id)}">
           <div class="ss-card-row">
             <div class="ss-rank ${rankClass}">${rank}</div>
             <div class="ss-card-thumb">${imgHtml}</div>
@@ -772,10 +834,26 @@
       `;
     }).join("");
 
+    // ⭐⭐⭐ حدث النقر الجديد: جلب السعر الدقيق قبل الفتح
     list.querySelectorAll(".ss-card").forEach(card => {
       card.addEventListener("click", () => {
         const item = items[+card.dataset.idx];
-        if (item?.link) window.open(item.link, "_blank", "noopener");
+        if (!item?.link) return;
+
+        // استخراج معرف المنتج (من البيانات أو من الرابط)
+        let productId = item._id;
+        if (!productId) {
+          const m = item.link.match(/\/item\/(\d+)/);
+          productId = m ? m[1] : null;
+        }
+
+        if (productId) {
+          // ⭐ جلب السعر الدقيق ثم فتح الرابط
+          fetchAccuratePriceAndOpen(productId, item.link, card);
+        } else {
+          // في حال عدم وجود معرف، افتح الرابط مباشرة
+          window.open(item.link, "_blank", "noopener");
+        }
       });
     });
   }
@@ -822,7 +900,7 @@
   async function run() {
     await sleep(800);
     currentProduct = extractProduct();
-    console.log("[Smart Shopper] v43 MEGA ready");
+    console.log("[Smart Shopper] v44 MEGA ready");
     console.log("[Smart Shopper] Image Hash:", currentProduct.imageHash);
     if (!currentProduct.title || currentProduct.title.length < 5) return;
     buildPanel();
@@ -838,5 +916,5 @@
   });
 
   run();
-  console.log("[Smart Shopper] v43 ready.");
+  console.log("[Smart Shopper] v44 ready.");
 })();
