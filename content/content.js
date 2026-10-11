@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════════════════
-   Smart Shopper — Content Script (v26.5)
-   Fixed: welcome deal price (base - save).
+   Smart Shopper — Content Script (v26.6)
+   Replace similarity badge with old crossed-out price.
    ═══════════════════════════════════════════════════════ */
 
 (function () {
@@ -13,7 +13,7 @@
   const LANG = typeof SS_LANG !== "undefined" ? SS_LANG : "en";
   const IS_RTL = typeof SS_RTL !== "undefined" ? SS_RTL : false;
 
-  console.log(`[Smart Shopper] v26.5 | Lang: ${LANG}`);
+  console.log(`[Smart Shopper] v26.6 | Lang: ${LANG}`);
 
   const PANEL_ID = "ss-floating-panel";
   const WORKER_URL = "https://cold-art-c5df.fislilouiza91.workers.dev";
@@ -77,16 +77,10 @@
     return /(\boff\s+on\b|\boff\s+us\b|coupon|voucher|reduction|with\s+coins|extra\s+\d+\s*%|installment|x\s*\$|×\s*\$|pieces|pcs|piece|bulk|wholesale|minimum|per\s+piece|\d+\s*\+|buy\s+now\s+pay|tax\s+excl)/i.test(text);
   }
 
-  // ═══════════════════════════════════════════════════════
-  // ⭐ WELCOME DEAL DETECTION
-  // إذا وُجد "save $X" أو "New shoppers save $X" → اطرحه من السعر
-  // ═══════════════════════════════════════════════════════
-
   function applyWelcomeDeal(price, rootEl) {
     if (!price || !rootEl) return price;
     const txt = rootEl.innerText || "";
 
-    // Pattern 1: "New shoppers save $X.XX"
     let m = txt.match(/new\s+shoppers?\s+save\s+\$?\s*([\d.,]+)/i);
     if (m) {
       const save = parseFloat(m[1].replace(",", "."));
@@ -96,16 +90,13 @@
       }
     }
 
-    // Pattern 2: "Save $X.XX" عام
     m = txt.match(/\bsave\s+\$?\s*([\d.,]+)/i);
     if (m) {
       const save = parseFloat(m[1].replace(",", "."));
       if (save > 0 && save < price) {
-        console.log(`[Smart Shopper] Save: $${price} - $${save} = $${price - save}`);
         return Math.round((price - save) * 100) / 100;
       }
     }
-
     return price;
   }
 
@@ -164,52 +155,39 @@
   }
 
   function getPrice() {
-    // 1. Meta tag
     const meta = document.querySelector("meta[property='product:price:amount']");
     if (meta) {
       const v = parseFloat(meta.getAttribute("content"));
       if (v > 0.5) return v;
     }
 
-    // 2. Find the biggest price near the title (real price = largest font)
     const priceEls = document.querySelectorAll("[class*='price'], [class*='Price']");
     const candidates = [];
     for (const el of priceEls) {
       const cls = (el.className || "").toString().toLowerCase();
       const style = (el.getAttribute("style") || "").toLowerCase();
-      // Skip old/crossed/coupon
       if (/(old|origin|del|through|cross|before|strike|coupon|off|save|discount|reduce|promo|voucher|bulk|wholesale|minimum|tier)/i.test(cls)) continue;
       if (/line-through/.test(style)) continue;
-
       const txt = (el.innerText || "").trim();
       if (!txt || isExcludedContext(txt)) continue;
-
       const nums = extractNumbers(txt);
       if (!nums.length || nums[0].value < 3) continue;
-
       const isCurrent = /(current|sale|now|main|primary|big|large)/i.test(cls);
       const fontSize = parseFloat(window.getComputedStyle(el).fontSize) || 12;
-
       candidates.push({ value: nums[0].value, isCurrent, fontSize, el });
     }
 
     if (candidates.length) {
-      // ⭐ ترتيب: أولاً current/sale، ثم الأكبر خطاً (السعر الرئيسي)
       candidates.sort((a, b) => {
         if (a.isCurrent !== b.isCurrent) return a.isCurrent ? -1 : 1;
         return b.fontSize - a.fontSize;
       });
-
       let basePrice = candidates[0].value;
-
-      // ⭐ تطبيق خصم Welcome Deal
       const container = candidates[0].el.closest("[class*='product'], [class*='pdp'], [class*='detail']") || document.body;
       basePrice = applyWelcomeDeal(basePrice, container);
-
       return basePrice;
     }
 
-    // 3. Fallback: near title
     const h1 = document.querySelector("h1[data-pl='product-title'], .product-title-text, h1.product-title");
     if (h1) {
       let node = h1;
@@ -233,7 +211,6 @@
         }
       }
     }
-
     return null;
   }
 
@@ -434,7 +411,6 @@
       }
     }
 
-    // ⭐ خصم Welcome
     current = applyWelcomeDeal(current, card);
 
     let discount = 0;
@@ -801,16 +777,12 @@
       else if (activeFilter === "best" && rank === 1) tag = `<span class="ss-tag ss-best">${T("bestValueTag")}</span>`;
       else if (isCheap) tag = `<span class="ss-tag ss-cheap">${T("bestPrice")}</span>`;
 
-      const simBadge = s.isSmartMatch
-        ? `<span class="ss-sim ss-sim-high" style="background:#dbeafe;color:#1e40af">✓</span>`
-        : s.similarity >= 50
-        ? `<span class="ss-sim ss-sim-high">${s.similarity}%</span>`
-        : s.similarity >= 25
-        ? `<span class="ss-sim ss-sim-mid">${s.similarity}%</span>`
-        : `<span class="ss-sim ss-sim-low">${s.similarity}%</span>`;
+      // ⭐ هنا التغيير: بدل نسبة التشابه → السعر القديم مشطوب
+      const oldPriceInMeta = s.oldPrice > 0
+        ? `<span class="ss-old-price">${formatPrice(s.oldPrice, currentProduct.currency)}</span>`
+        : "";
 
       const discountBadge = s.discount > 0 ? `<span class="ss-discount">-${s.discount}%</span>` : "";
-      const oldPriceHtml = s.oldPrice > 0 ? `<span class="ss-old-price">${formatPrice(s.oldPrice, currentProduct.currency)}</span>` : "";
       const ratingHtml = s.rating > 0 ? `<span class="ss-rating">★ ${s.rating.toFixed(1)}</span>` : "";
       const soldHtml = s.sold > 0 ? `<span class="ss-sold">${fmt(s.sold)} ${T("sold")}</span>` : "";
       const metaItems = [ratingHtml, soldHtml].filter(Boolean).join('<span class="ss-sep">·</span>');
@@ -835,14 +807,13 @@
           <div class="ss-thumb">${imgHtml}</div>
           <div class="ss-info">
             <div class="ss-store">${esc(s.store)}</div>
-            <div class="ss-meta">${simBadge}${metaItems}</div>
+            <div class="ss-meta">${oldPriceInMeta}${metaItems}</div>
           </div>
           <div class="ss-price-col">
             <div class="ss-price-line">
               <span class="ss-price-now">${formatPrice(s.price, currentProduct.currency)}</span>
               ${discountBadge}
             </div>
-            ${oldPriceHtml ? `<div class="ss-old-line">${oldPriceHtml}</div>` : ""}
             ${priceExtra}
           </div>
         </div>
@@ -907,11 +878,8 @@
   async function run() {
     await sleep(1500);
     currentProduct = extractProduct();
-    console.log("[Smart Shopper] ════════════════════════════════");
-    console.log("[Smart Shopper] v26.5 — Welcome Deal Fix");
-    console.log("[Smart Shopper] Worker:", WORKER_URL);
+    console.log("[Smart Shopper] v26.6 ready");
     console.log("[Smart Shopper] Product:", currentProduct);
-    console.log("[Smart Shopper] ════════════════════════════════");
 
     if (!currentProduct.title || currentProduct.title.length < 5) return;
     buildPanel();
@@ -927,5 +895,4 @@
   });
 
   run();
-  console.log("[Smart Shopper] v26.5 ready.");
 })();
