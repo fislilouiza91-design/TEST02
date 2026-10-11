@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════════════════
-   Smart Shopper — Content Script (v26.8)
-   Compute old price from discount when missing.
+   Smart Shopper — Content Script (v26.9)
+   NO fake computed prices. Show only real data.
    ═══════════════════════════════════════════════════════ */
 
 (function () {
@@ -13,7 +13,7 @@
   const LANG = typeof SS_LANG !== "undefined" ? SS_LANG : "en";
   const IS_RTL = typeof SS_RTL !== "undefined" ? SS_RTL : false;
 
-  console.log(`[Smart Shopper] v26.8 | Lang: ${LANG}`);
+  console.log(`[Smart Shopper] v26.9 | Lang: ${LANG}`);
 
   const PANEL_ID = "ss-floating-panel";
   const WORKER_URL = "https://cold-art-c5df.fislilouiza91.workers.dev";
@@ -77,11 +77,6 @@
     if (!price || !rootEl) return price;
     const txt = rootEl.innerText || "";
     let m = txt.match(/new\s+shoppers?\s+save\s+\$?\s*([\d.,]+)/i);
-    if (m) {
-      const save = parseFloat(m[1].replace(",", "."));
-      if (save > 0 && save < price) return Math.round((price - save) * 100) / 100;
-    }
-    m = txt.match(/\bsave\s+\$?\s*([\d.,]+)/i);
     if (m) {
       const save = parseFloat(m[1].replace(",", "."));
       if (save > 0 && save < price) return Math.round((price - save) * 100) / 100;
@@ -263,20 +258,17 @@
   function mapSmartMatchProduct(p) {
     const price = parseFloat(p.target_sale_price || p.sale_price || 0);
     const oldP = parseFloat(p.target_original_price || p.original_price || 0);
-    let discount = oldP > price && price > 0 ? Math.round((1 - price / oldP) * 100) : 0;
     const rating = parseFloat(String(p.evaluate_rate || "0").replace("%", "")) / 20;
 
-    // ⭐ إذا لا يوجد oldPrice لكن يوجد خصم → احسبه
-    let finalOld = oldP;
-    if ((!finalOld || finalOld <= price) && discount > 0 && price > 0) {
-      finalOld = Math.round(price / (1 - discount / 100) * 100) / 100;
-    }
+    // ⭐ فقط إن كان السعر القديم موجود فعلاً
+    const finalOld = (oldP > price && price > 0) ? oldP : 0;
+    const discount = finalOld > 0 ? Math.round((1 - price / finalOld) * 100) : 0;
 
     return {
       store: p.shop_name || p.store_name || "AliExpress Seller",
       img: p.product_main_image_url || "",
       price,
-      oldPrice: finalOld > price ? finalOld : 0,
+      oldPrice: finalOld,
       discount,
       rating: rating > 0 && rating <= 5 ? +rating.toFixed(1) : 0,
       sold: parseInt(p.lastest_volume || p.volume || 0, 10),
@@ -335,13 +327,14 @@
   }
 
   // ═══════════════════════════════════════════════════════
-  // CARD PARSING
+  // ⭐ CARD PARSING — No fake computations
   // ═══════════════════════════════════════════════════════
 
   function parseCardPrice(card) {
     const txt = card.innerText || "";
     let current = 0, old = 0;
 
+    // استخرج السعر الحالي والقديم من class-based elements
     const priceEls = card.querySelectorAll("[class*='price'], [class*='Price']");
     for (const el of priceEls) {
       const cls = (el.className || "").toString().toLowerCase();
@@ -372,18 +365,9 @@
       }
     }
 
-    if (!current) {
-      const decimalNums = txt.match(/([\d]+[.,][\d]{2})/g) || [];
-      const parsed = decimalNums.map(n => parseFloat(n.replace(",", "."))).filter(v => v >= 0.5);
-      if (parsed.length) {
-        parsed.sort((a, b) => b - a);
-        current = parsed[0];
-      }
-    }
-
     current = applyWelcomeDeal(current, card);
 
-    // نسبة الخصم
+    // نسبة الخصم من النص
     let discount = 0;
     const dMatch = txt.match(/[-−]\s*(\d{1,2})\s*%/);
     if (dMatch) {
@@ -391,14 +375,10 @@
       if (d >= 5 && d <= 90) discount = d;
     }
 
+    // ⭐ إذا السعر القديم <= السعر الحالي → غير صالح
     if (old > 0 && old <= current) old = 0;
-    if (!discount && old > current && current > 0) discount = Math.round((1 - current / old) * 100);
 
-    // ⭐ الحل: إذا لا يوجد oldPrice لكن يوجد خصم → احسبه
-    if ((!old || old <= current) && discount > 0 && current > 0) {
-      old = Math.round(current / (1 - discount / 100) * 100) / 100;
-    }
-
+    // ⭐ لا نحسب السعر القديم رياضياً — فقط نحفظ الخصم كما هو
     return { price: current, oldPrice: old, discount };
   }
 
@@ -724,7 +704,7 @@
       else if (activeFilter === "best" && rank === 1) tag = `<span class="ss-tag ss-best">${T("bestValueTag")}</span>`;
       else if (isCheap) tag = `<span class="ss-tag ss-cheap">${T("bestPrice")}</span>`;
 
-      // ⭐ السعر القديم (المحسوب من الخصم أو المستخرج)
+      // ⭐ السعر القديم: فقط إذا حقيقي
       const oldPriceHtml = s.oldPrice > 0 && s.oldPrice > s.price
         ? `<div class="ss-old-line"><span class="ss-old-price">${formatPrice(s.oldPrice, currentProduct.currency)}</span></div>`
         : "";
@@ -808,7 +788,7 @@
   async function run() {
     await sleep(1500);
     currentProduct = extractProduct();
-    console.log("[Smart Shopper] v26.8 — Compute old price");
+    console.log("[Smart Shopper] v26.9 — Honest prices only");
     console.log("[Smart Shopper] Product:", currentProduct);
     if (!currentProduct.title || currentProduct.title.length < 5) return;
     buildPanel();
@@ -824,5 +804,5 @@
   });
 
   run();
-  console.log("[Smart Shopper] v26.8 ready.");
+  console.log("[Smart Shopper] v26.9 ready.");
 })();
