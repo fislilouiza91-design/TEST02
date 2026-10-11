@@ -20,7 +20,7 @@
 
   let currentProduct = null;
   let sellers = [];
-  let activeFilter = "cheap";
+  let activeFilter = "best"; // ⭐ تم التعديل: الفلتر الافتراضي هو "أفضل قيمة"
   let minimized = false;
   let isScanning = false;
 
@@ -528,8 +528,8 @@
         </div>
       </div>
       <div class="ss-filters" id="ss-filters">
-        <button class="ss-chip ss-active" data-f="cheap">${T("cheapest")}</button>
-        <button class="ss-chip" data-f="best">${T("bestValue")}</button>
+        <button class="ss-chip" data-f="cheap">${T("cheapest")}</button>
+        <button class="ss-chip ss-active" data-f="best">${T("bestValue")}</button> <!-- ⭐ تم التعديل هنا -->
         <button class="ss-chip" data-f="discount">${T("bestDiscount")}</button>
         <button class="ss-chip" data-f="sold">${T("mostSold")}</button>
       </div>
@@ -700,7 +700,7 @@
     if (f === "cheap") return copy.sort((a, b) => a.price - b.price);
     if (f === "discount") return copy.sort((a, b) => (b.discount || 0) - (a.discount || 0));
     if (f === "sold") return copy.sort((a, b) => (b.sold || 0) - (a.sold || 0));
-    return copy.sort((a, b) => b._rank - a._rank);
+    return copy.sort((a, b) => b._rank - a._rank); // "best" أو "Meilleur rapport"
   }
 
   function renderList() {
