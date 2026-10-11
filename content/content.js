@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════════════════
-   Smart Shopper — Content Script (v30 TIERED)
-   Smart Match + 4-level tiered filtering.
+   Smart Shopper — Content Script (v31)
+   Smart Match + Strict Tiered Filtering (no junk).
    ═══════════════════════════════════════════════════════ */
 
 (function () {
@@ -13,7 +13,7 @@
   const LANG = typeof SS_LANG !== "undefined" ? SS_LANG : "en";
   const IS_RTL = typeof SS_RTL !== "undefined" ? SS_RTL : false;
 
-  console.log(`[Smart Shopper] v30 TIERED | Lang: ${LANG}`);
+  console.log(`[Smart Shopper] v31 | Lang: ${LANG}`);
 
   const PANEL_ID = "ss-floating-panel";
   const WORKER_URL = "https://cold-art-c5df.fislilouiza91.workers.dev";
@@ -542,7 +542,7 @@
   }
 
   // ═══════════════════════════════════════════════════════
-  // ⭐ TIERED SCRAPER
+  // ⭐ TIERED SCRAPER (NO Tier 4)
   // ═══════════════════════════════════════════════════════
 
   function scrapePage(currentKeywords, currentBrand, currentModels) {
@@ -610,23 +610,23 @@
       }
     }
 
-    // ⭐ Tier 3: 20%+
+    // ⭐ Tier 3: 25%+ AND (brand OR 1+ model OR 2+ keywords)
     if (filtered.length < 3) {
-      const t3 = allCandidates.filter(c => c.similarity >= 20 && c.similarity < 40);
+      const t3 = allCandidates.filter(c =>
+        c.similarity >= 25 &&
+        c.similarity < 40 &&
+        (c.brandMatch || c.modelMatches >= 1 || c.kwMatches >= 2)
+      );
       if (t3.length > 0) {
         filtered = [...filtered, ...t3];
         tier = 3;
       }
     }
 
-    // ⭐ Tier 4: anything (last resort)
-    if (filtered.length === 0 && allCandidates.length > 0) {
-      filtered = allCandidates.slice(0, 10);
-      tier = 4;
-    }
+    // ❌ NO Tier 4 — لا منتجات غير ذات صلة
 
     console.log(`[Smart Shopper] Tier ${tier}: ${filtered.length} results`);
-    lastTier = tier;
+    lastTier = filtered.length > 0 ? tier : 0;
 
     filtered.sort((a, b) => b.similarity - a.similarity);
     return filtered;
@@ -743,7 +743,6 @@
       if (lastTier === 1) updateSourceLabel("page-exact");
       else if (lastTier === 2) updateSourceLabel("page-close");
       else if (lastTier === 3) updateSourceLabel("page-related");
-      else if (lastTier === 4) updateSourceLabel("page-any");
       else updateSourceLabel("none");
 
       renderList();
@@ -763,7 +762,6 @@
     else if (mode === "page-exact") el.textContent = T("sameProduct") + " (exact)";
     else if (mode === "page-close") el.textContent = T("similarMatched");
     else if (mode === "page-related") el.textContent = T("related");
-    else if (mode === "page-any") el.textContent = "Suggestions";
     else el.textContent = T("scanning");
   }
 
@@ -815,10 +813,12 @@
     list.innerHTML = `
       <div class="ss-empty">
         <div class="ss-empty-icon">🎯</div>
-        <div class="ss-empty-title">No matches found</div>
+        <div class="ss-empty-title">No similar products found</div>
         <div class="ss-empty-sub">
-          AliExpress doesn't list similar products for this item on this page.<br>
-          Try a different product.
+          AliExpress doesn't list this product from other sellers on this page.<br>
+          <span style="color:#cbd5e1;font-size:9.5px;display:block;margin-top:6px">
+            Try another product.
+          </span>
         </div>
         <button class="ss-empty-btn" id="ss-retry">${T("scanAgain")}</button>
       </div>
@@ -985,7 +985,7 @@
     await sleep(1500);
     currentProduct = extractProduct();
     console.log("[Smart Shopper] ════════════════════════════════");
-    console.log("[Smart Shopper] v30 TIERED — Smart Match + 4 tiers");
+    console.log("[Smart Shopper] v31 — Smart Match + Strict Tiers");
     console.log("[Smart Shopper] Worker:", WORKER_URL);
     console.log("[Smart Shopper] Product:", currentProduct);
     console.log("[Smart Shopper] Brand:", extractBrand(currentProduct.title));
@@ -1006,5 +1006,5 @@
   });
 
   run();
-  console.log("[Smart Shopper] v30 ready.");
+  console.log("[Smart Shopper] v31 ready.");
 })();
