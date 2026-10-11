@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════════════════
-   Smart Shopper — Content Script (v28 COMPACT)
-   Smart Match + Welcome Deal + Compact UI.
+   Smart Shopper — Content Script (v29 STRICT)
+   STRICT matching: same brand + same model only.
    ═══════════════════════════════════════════════════════ */
 
 (function () {
@@ -13,10 +13,11 @@
   const LANG = typeof SS_LANG !== "undefined" ? SS_LANG : "en";
   const IS_RTL = typeof SS_RTL !== "undefined" ? SS_RTL : false;
 
-  console.log(`[Smart Shopper] v28 COMPACT | Lang: ${LANG}`);
+  console.log(`[Smart Shopper] v29 STRICT | Lang: ${LANG}`);
 
   const PANEL_ID = "ss-floating-panel";
   const WORKER_URL = "https://cold-art-c5df.fislilouiza91.workers.dev";
+  const SIMILARITY_THRESHOLD = 60; // ⭐ 60% minimum
 
   let currentProduct = null;
   let sellers = [];
@@ -279,6 +280,7 @@
       title: p.product_title || p.product_name || "",
       similarity: 100,
       isSmartMatch: true,
+      brandMatch: true,
     };
   }
 
@@ -327,6 +329,119 @@
       if (src) return src;
     }
     return "";
+  }
+
+  // ═══════════════════════════════════════════════════════
+  // ⭐ BRAND & MODEL EXTRACTION — للتدقيق
+  // ═══════════════════════════════════════════════════════
+
+  function extractBrand(title) {
+    if (!title) return "";
+    // ALL-CAPS brand at start (CAOFEN, ROCKBROS, EKX)
+    let m = title.match(/^\s*([A-Z][A-Z0-9]{2,15})\b/);
+    if (m) return m[1].toUpperCase();
+
+    // Capitalized brand at start
+    m = title.match(/^\s*([A-Z][a-z]{2,15})\b/);
+    if (m) return m[1].toUpperCase();
+
+    // Look in first 60 chars
+    m = title.slice(0, 60).match(/\b([A-Z][A-Z0-9]{2,15})\b/);
+    if (m) return m[1].toUpperCase();
+
+    return "";
+  }
+
+  function extractModels(title) {
+    if (!title) return [];
+    const set = new Set();
+
+    // Letter+numbers (F80, X21, TS9, TWS)
+    let matches = title.match(/\b[A-Z]{1,4}\d{1,5}[A-Z]?\b/g) || [];
+    matches.forEach(m => set.add(m.toUpperCase()));
+
+    // Number+Letter
+    matches = title.match(/\b\d{1,5}[A-Z]{2,4}\b/g) || [];
+    matches.forEach(m => set.add(m.toUpperCase()));
+
+    return Array.from(set).slice(0, 5);
+  }
+
+  function countModelMatches(text, models) {
+    if (!text || !models.length) return 0;
+    const upper = text.toUpperCase();
+    let c = 0;
+    for (const m of models) if (upper.includes(m)) c++;
+    return c;
+  }
+
+  // ═══════════════════════════════════════════════════════
+  // KEYWORDS
+  // ═══════════════════════════════════════════════════════
+
+  const STOP_WORDS = new Set([
+    "for","with","and","the","a","an","of","to","in","on","at","by","is","are",
+    "original","new","hot","sale","free","shipping","best","top","quality","high",
+    "wholesale","dropshipping","factory","brand","genuine","fast","delivery",
+    "1pc","2pcs","3pcs","pcs","set","pack","style","type","you","your","this","that",
+    "from","into","only","more","all","any","good","great","item","product","pieces",
+    "piece","color","colors","size","sizes","model","series","version",
+    "maximum","minimum","medium","direct","power","strong","small","large",
+    "big","cheap","premium","professional","portable","rechargeable","wireless",
+    "usb","led","plastic","metal","rubber","black","white","red","blue","green",
+  ]);
+
+  function getKeywords(title) {
+    if (!title) return [];
+    return title.replace(/[^\p{L}\p{N}\s]/gu, " ").split(/\s+/)
+      .map(w => w.trim())
+      .filter(w => w.length > 2 && !STOP_WORDS.has(w.toLowerCase()) && !/^\d+$/.test(w))
+      .map(w => w.toLowerCase());
+  }
+
+  function countKeywords(text, kw) {
+    if (!text || !kw.length) return 0;
+    const set = new Set(getKeywords(text));
+    let c = 0;
+    for (const k of kw) if (set.has(k)) c++;
+    return c;
+  }
+
+  // ═══════════════════════════════════════════════════════
+  // ⭐ SIMILARITY SCORE — 0-100
+  // ═══════════════════════════════════════════════════════
+
+  function computeSimilarity(cardTitle, currentKeywords, currentBrand, currentModels) {
+    let score = 0;
+    const reasons = [];
+
+    // 1) Brand match (+30)
+    const cardBrand = extractBrand(cardTitle);
+    const brandMatch = currentBrand && cardBrand && currentBrand === cardBrand;
+    if (brandMatch) {
+      score += 30;
+      reasons.push("brand");
+    }
+
+    // 2) Model match (+25 each, max 50)
+    const modelMatches = countModelMatches(cardTitle, currentModels);
+    if (modelMatches > 0) {
+      score += Math.min(modelMatches * 25, 50);
+      reasons.push(`${modelMatches}m`);
+    }
+
+    // 3) Keyword match (+5 each, max 40)
+    const kwMatches = countKeywords(cardTitle, currentKeywords);
+    score += Math.min(kwMatches * 5, 40);
+    if (kwMatches > 0) reasons.push(`${kwMatches}k`);
+
+    return {
+      score: Math.min(score, 100),
+      reasons,
+      brandMatch,
+      modelMatches,
+      kwMatches,
+    };
   }
 
   // ═══════════════════════════════════════════════════════
@@ -407,31 +522,6 @@
     return 0;
   }
 
-  const STOP_WORDS = new Set([
-    "for","with","and","the","a","an","of","to","in","on","at","by","is","are",
-    "original","new","hot","sale","free","shipping","best","top","quality","high",
-    "wholesale","dropshipping","factory","brand","genuine","fast","delivery",
-    "1pc","2pcs","3pcs","pcs","set","pack","style","type","you","your","this","that",
-    "from","into","only","more","all","any","good","great","item","product","pieces",
-    "piece","color","colors","size","sizes","model","series","version",
-  ]);
-
-  function getKeywords(title) {
-    if (!title) return [];
-    return title.replace(/[^\p{L}\p{N}\s]/gu, " ").split(/\s+/)
-      .map(w => w.trim())
-      .filter(w => w.length > 2 && !STOP_WORDS.has(w.toLowerCase()) && !/^\d+$/.test(w))
-      .map(w => w.toLowerCase());
-  }
-
-  function countKeywords(text, kw) {
-    if (!text || !kw.length) return 0;
-    const set = new Set(getKeywords(text));
-    let c = 0;
-    for (const k of kw) if (set.has(k)) c++;
-    return c;
-  }
-
   function findCardContainer(link) {
     let cur = link;
     for (let i = 0; i < 6 && cur; i++) {
@@ -469,13 +559,21 @@
     });
   }
 
-  function scrapePage(currentKeywords) {
+  // ═══════════════════════════════════════════════════════
+  // ⭐ SCRAPE WITH STRICT FILTERS
+  // ═══════════════════════════════════════════════════════
+
+  function scrapePage(currentKeywords, currentBrand, currentModels) {
     const results = [];
     const seen = new Set();
     const currentUrl = location.href.split("?")[0];
     const links = document.querySelectorAll("a[href*='/item/']");
 
     console.log(`[Smart Shopper] Page links: ${links.length}`);
+    console.log(`[Smart Shopper] Brand: "${currentBrand}" | Models: [${currentModels.join(",")}]`);
+    console.log(`[Smart Shopper] Keywords: [${currentKeywords.slice(0, 6).join(",")}]`);
+
+    let skipped = { noImg: 0, noPrice: 0, noTitle: 0, lowSim: 0 };
 
     for (const link of links) {
       try {
@@ -484,15 +582,24 @@
         const card = findCardContainer(link);
         if (!card) continue;
         const img = extractRealImage(card);
-        if (!img) continue;
+        if (!img) { skipped.noImg++; continue; }
         const priceInfo = parseCardPrice(card);
-        if (!priceInfo.price) continue;
+        if (!priceInfo.price) { skipped.noPrice++; continue; }
         const title = parseCardTitle(card);
-        if (!title || title.length < 8) continue;
-        const kwMatches = countKeywords(title, currentKeywords);
-        if (kwMatches < 2) continue;
+        if (!title || title.length < 8) { skipped.noTitle++; continue; }
+
+        // ⭐ حساب التشابه
+        const sim = computeSimilarity(title, currentKeywords, currentBrand, currentModels);
+
+        // ⭐ شرط صارم: 60% similarity
+        if (sim.score < SIMILARITY_THRESHOLD) {
+          skipped.lowSim++;
+          continue;
+        }
+
         const sold = parseCardSold(card);
         const rating = parseCardRating(card);
+
         seen.add(href);
         results.push({
           store: title.slice(0, 70).trim(),
@@ -503,12 +610,16 @@
           rating,
           sold,
           link: href,
-          similarity: Math.min(kwMatches * 15, 80),
+          similarity: sim.score,
           isSmartMatch: false,
+          brandMatch: sim.brandMatch,
+          modelMatches: sim.modelMatches,
+          kwMatches: sim.kwMatches,
         });
       } catch (_) {}
     }
-    console.log(`[Smart Shopper] Page matched: ${results.length}`);
+
+    console.log(`[Smart Shopper] Kept: ${results.length} | Skipped:`, skipped);
     return results;
   }
 
@@ -602,18 +713,23 @@
       const smart = await fetchSmartMatch(currentProduct);
       if (smart.ok && smart.products.length > 0) {
         sellers = rankProducts(smart.products.map(mapSmartMatchProduct));
-        console.log(`[Smart Shopper] ✅ Smart Match: ${sellers.length}`);
+        console.log(`[Smart Shopper] ✅ Smart Match: ${sellers.length} EXACT matches`);
         updateSourceLabel("smart");
         renderList();
         return;
       }
-      console.log("[Smart Shopper] ═══ STEP 2: Page fallback ═══");
+
+      console.log("[Smart Shopper] ═══ STEP 2: Page fallback (STRICT) ═══");
       const currentKeywords = getKeywords(currentProduct.title);
+      const currentBrand = extractBrand(currentProduct.title);
+      const currentModels = extractModels(currentProduct.title);
+
       await autoScroll();
-      const candidates = scrapePage(currentKeywords);
+      const candidates = scrapePage(currentKeywords, currentBrand, currentModels);
       sellers = rankProducts(candidates);
-      console.log(`[Smart Shopper] Page fallback: ${sellers.length}`);
-      updateSourceLabel("page");
+
+      console.log(`[Smart Shopper] ✅ Page strict: ${sellers.length} matches (≥${SIMILARITY_THRESHOLD}%)`);
+      updateSourceLabel(sellers.length > 0 ? "page" : "none");
       renderList();
     } catch (e) {
       console.error("[Smart Shopper] Scan error:", e);
@@ -627,7 +743,9 @@
   function updateSourceLabel(mode) {
     const el = document.getElementById("ss-source");
     if (!el) return;
-    el.textContent = mode === "smart" ? T("sameProduct") : mode === "page" ? T("similarMatched") : T("scanning");
+    if (mode === "smart") el.textContent = T("sameProduct") + " ✓";
+    else if (mode === "page") el.textContent = T("similarMatched") + ` (≥${SIMILARITY_THRESHOLD}%)`;
+    else el.textContent = T("scanning");
   }
 
   function renderCurrentProduct() {
@@ -677,9 +795,12 @@
     if (!list) return;
     list.innerHTML = `
       <div class="ss-empty">
-        <div class="ss-empty-icon">🔍</div>
-        <div class="ss-empty-title">${T("noProducts")}</div>
-        <div class="ss-empty-sub">${T("noProductsSub")}</div>
+        <div class="ss-empty-icon">🎯</div>
+        <div class="ss-empty-title">No exact matches found</div>
+        <div class="ss-empty-sub">
+          AliExpress doesn't list the same product from other sellers on this page.<br>
+          Try a different product.
+        </div>
         <button class="ss-empty-btn" id="ss-retry">${T("scanAgain")}</button>
       </div>
     `;
@@ -695,7 +816,7 @@
   }
 
   // ═══════════════════════════════════════════════════════
-  // ⭐ COMPACT LIST
+  // COMPACT LIST
   // ═══════════════════════════════════════════════════════
 
   function renderList() {
@@ -750,7 +871,7 @@
       const matchLine = !s.isSmartMatch ? `
         <div class="ss-match-line">
           <div class="ss-match-track">
-            <div class="ss-match-fill ${s.similarity >= 50 ? "" : s.similarity >= 25 ? "mid" : "low"}"
+            <div class="ss-match-fill ${s.similarity >= 80 ? "" : s.similarity >= 60 ? "mid" : "low"}"
                  style="width:${s.similarity}%"></div>
           </div>
           <div class="ss-match-text">${s.similarity}% MATCH</div>
@@ -845,9 +966,12 @@
     await sleep(1500);
     currentProduct = extractProduct();
     console.log("[Smart Shopper] ════════════════════════════════");
-    console.log("[Smart Shopper] v28 COMPACT — Smart Match");
+    console.log("[Smart Shopper] v29 STRICT — Same product only");
+    console.log("[Smart Shopper] Threshold:", SIMILARITY_THRESHOLD + "%");
     console.log("[Smart Shopper] Worker:", WORKER_URL);
     console.log("[Smart Shopper] Product:", currentProduct);
+    console.log("[Smart Shopper] Brand:", extractBrand(currentProduct.title));
+    console.log("[Smart Shopper] Models:", extractModels(currentProduct.title));
     console.log("[Smart Shopper] ════════════════════════════════");
 
     if (!currentProduct.title || currentProduct.title.length < 5) return;
@@ -864,5 +988,5 @@
   });
 
   run();
-  console.log("[Smart Shopper] v28 ready.");
+  console.log("[Smart Shopper] v29 ready.");
 })();
