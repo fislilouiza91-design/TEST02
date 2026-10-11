@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════════════════
-   Smart Shopper — Content Script (v26.6 FINAL)
-   Smart Match + Welcome Deal + Honest prices only.
+   Smart Shopper — Content Script (v27 RICH)
+   Smart Match + Welcome Deal + Rich UI.
    ═══════════════════════════════════════════════════════ */
 
 (function () {
@@ -13,7 +13,7 @@
   const LANG = typeof SS_LANG !== "undefined" ? SS_LANG : "en";
   const IS_RTL = typeof SS_RTL !== "undefined" ? SS_RTL : false;
 
-  console.log(`[Smart Shopper] v26.6 | Lang: ${LANG}`);
+  console.log(`[Smart Shopper] v27 RICH | Lang: ${LANG}`);
 
   const PANEL_ID = "ss-floating-panel";
   const WORKER_URL = "https://cold-art-c5df.fislilouiza91.workers.dev";
@@ -548,9 +548,9 @@
           </div>
         </div>
         <div class="ss-header-actions">
-          <button class="ss-btn-icon" data-action="refresh">↻</button>
-          <button class="ss-btn-icon" data-action="minimize">−</button>
-          <button class="ss-btn-icon" data-action="close">×</button>
+          <button class="ss-btn-icon" data-action="refresh" title="Rescan">↻</button>
+          <button class="ss-btn-icon" data-action="minimize" title="Minimize">−</button>
+          <button class="ss-btn-icon" data-action="close" title="Close">×</button>
         </div>
       </div>
       <div class="ss-current">
@@ -635,6 +635,7 @@
     const img = document.getElementById("ss-cur-img");
     const title = document.getElementById("ss-cur-title");
     const meta = document.getElementById("ss-cur-meta");
+
     if (img) {
       if (currentProduct.image) {
         img.src = currentProduct.image;
@@ -644,10 +645,16 @@
     if (title) title.textContent = currentProduct.title || "—";
     if (meta) {
       const parts = [];
-      if (currentProduct.price != null) parts.push(`<strong>${formatPrice(currentProduct.price, currentProduct.currency)}</strong>`);
-      if (currentProduct.rating != null) parts.push(`★ ${currentProduct.rating}`);
-      if (currentProduct.sold != null) parts.push(`${fmt(currentProduct.sold)} ${T("sold")}`);
-      meta.innerHTML = parts.join(' <span style="color:#a1a1aa">·</span> ');
+      if (currentProduct.price != null) {
+        parts.push(`<strong>${formatPrice(currentProduct.price, currentProduct.currency)}</strong>`);
+      }
+      if (currentProduct.rating != null) {
+        parts.push(`<span class="ss-meta-pill ss-star">★ ${currentProduct.rating}</span>`);
+      }
+      if (currentProduct.sold != null) {
+        parts.push(`<span class="ss-meta-pill">${fmt(currentProduct.sold)} ${T("sold")}</span>`);
+      }
+      meta.innerHTML = parts.join(" ");
     }
   }
 
@@ -655,12 +662,14 @@
     const list = document.getElementById("ss-list");
     if (!list) return;
     list.innerHTML = Array.from({ length: 3 }).map(() => `
-      <div class="ss-skeleton-row">
-        <div class="ss-sk ss-sk-rank"></div>
-        <div class="ss-sk ss-sk-thumb"></div>
-        <div class="ss-sk-lines">
-          <div class="ss-sk ss-sk-line" style="width:75%"></div>
-          <div class="ss-sk ss-sk-line" style="width:45%"></div>
+      <div class="ss-skeleton">
+        <div class="ss-sk-row">
+          <div class="ss-sk ss-sk-thumb"></div>
+          <div class="ss-sk-lines">
+            <div class="ss-sk ss-sk-line"></div>
+            <div class="ss-sk ss-sk-line short"></div>
+            <div class="ss-sk ss-sk-line" style="width:40%"></div>
+          </div>
         </div>
       </div>
     `).join("");
@@ -670,10 +679,11 @@
     const list = document.getElementById("ss-list");
     if (!list) return;
     list.innerHTML = `
-      <div style="padding: 24px 16px; text-align:center;">
-        <div style="font-size:12.5px;font-weight:600;color:#09090b;margin-bottom:6px;">${T("noProducts")}</div>
-        <div style="font-size:11px;color:#a1a1aa;line-height:1.55;margin-bottom:12px;">${T("noProductsSub")}</div>
-        <button id="ss-retry" style="background:#09090b;color:#fff;border:none;padding:7px 14px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;">${T("scanAgain")}</button>
+      <div class="ss-empty">
+        <div class="ss-empty-icon">🔍</div>
+        <div class="ss-empty-title">${T("noProducts")}</div>
+        <div class="ss-empty-sub">${T("noProductsSub")}</div>
+        <button class="ss-empty-btn" id="ss-retry">${T("scanAgain")}</button>
       </div>
     `;
     document.getElementById("ss-retry")?.addEventListener("click", () => doScan());
@@ -694,60 +704,142 @@
 
     const items = sortSellers(sellers, activeFilter);
     const minPrice = Math.min(...items.map(s => s.price).filter(p => p > 0));
+    const currentPrice = currentProduct?.price || 0;
 
     list.innerHTML = items.slice(0, 12).map((s, i) => {
       const rank = i + 1;
       const isCheap = s.price === minPrice && s.price > 0;
-      const rowClass = rank === 1 ? "ss-best" : (isCheap ? "ss-cheap" : "");
+      const cardClass = rank === 1 ? "ss-best" : (isCheap ? "ss-cheap" : "");
       const rankClass = rank <= 3 ? `ss-r${rank}` : "";
 
-      let tag = "";
-      if (activeFilter === "cheap" && rank === 1) tag = `<span class="ss-tag ss-cheap">${T("cheapestTag")}</span>`;
-      else if (activeFilter === "discount" && rank === 1) tag = `<span class="ss-tag ss-hot">${T("bestDeal")}</span>`;
-      else if (activeFilter === "sold" && rank === 1) tag = `<span class="ss-tag ss-top">${T("mostSoldTag")}</span>`;
-      else if (activeFilter === "best" && rank === 1) tag = `<span class="ss-tag ss-best">${T("bestValueTag")}</span>`;
-      else if (isCheap) tag = `<span class="ss-tag ss-cheap">${T("bestPrice")}</span>`;
+      // ═══ Badge ═══
+      let badge = "";
+      if (activeFilter === "cheap" && rank === 1) badge = `<span class="ss-badge ss-badge-cheap">${T("cheapestTag")}</span>`;
+      else if (activeFilter === "discount" && rank === 1) badge = `<span class="ss-badge ss-badge-hot">${T("bestDeal")}</span>`;
+      else if (activeFilter === "sold" && rank === 1) badge = `<span class="ss-badge ss-badge-top">${T("mostSoldTag")}</span>`;
+      else if (activeFilter === "best" && rank === 1) badge = `<span class="ss-badge ss-badge-best">${T("bestValueTag")}</span>`;
+      else if (isCheap) badge = `<span class="ss-badge ss-badge-cheap">${T("bestPrice")}</span>`;
+      else if (s.isSmartMatch) badge = `<span class="ss-badge ss-badge-match">✓ MATCH</span>`;
 
-      const oldPriceHtml = s.oldPrice > 0 && s.oldPrice > s.price
-        ? `<div class="ss-old-line"><span class="ss-old-price">${formatPrice(s.oldPrice, currentProduct.currency)}</span></div>`
+      // ═══ Discount ═══
+      const discountBadge = s.discount > 0
+        ? `<span class="ss-save-badge">-${s.discount}%</span>`
         : "";
 
-      const discountBadge = s.discount > 0 ? `<span class="ss-discount">-${s.discount}%</span>` : "";
-      const ratingHtml = s.rating > 0 ? `<span class="ss-rating">★ ${s.rating.toFixed(1)}</span>` : "";
-      const soldHtml = s.sold > 0 ? `<span class="ss-sold">${fmt(s.sold)} ${T("sold")}</span>` : "";
-      const metaItems = [ratingHtml, soldHtml].filter(Boolean).join('<span class="ss-sep">·</span>');
+      // ═══ Old price ═══
+      const oldPriceHtml = s.oldPrice > 0 && s.oldPrice > s.price
+        ? `<span class="ss-price-old">${formatPrice(s.oldPrice, currentProduct.currency)}</span>`
+        : "";
+
+      // ═══ Tags ═══
+      const tags = [];
+      if (s.rating > 0) {
+        tags.push(`<span class="ss-tag-item ss-tag-rating">
+          <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+          ${s.rating.toFixed(1)}
+        </span>`);
+      }
+      if (s.sold > 0) {
+        tags.push(`<span class="ss-tag-item ss-tag-sold">
+          <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><path d="M3 6h18M16 10a4 4 0 0 1-8 0"/></svg>
+          ${fmt(s.sold)} ${T("sold")}
+        </span>`);
+      }
+      if (s.isSmartMatch) {
+        tags.push(`<span class="ss-tag-item ss-tag-ship">
+          <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+          Same product
+        </span>`);
+      }
+
+      // ═══ Comparison vs Current ═══
+      let compareHtml = "";
+      if (currentPrice && s.price > 0) {
+        const diff = s.price - currentPrice;
+        const pct = Math.round(Math.abs(diff) / currentPrice * 100);
+        if (diff < 0) {
+          compareHtml = `
+            <div class="ss-compare-bar">
+              <div class="ss-compare-left">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="23 18 13.5 8.5 8.5 13.5 1 6"/><polyline points="17 18 23 18 23 12"/></svg>
+                <span>Save vs your product</span>
+              </div>
+              <div class="ss-compare-vs up">−${pct}%</div>
+            </div>`;
+        } else if (diff > 0) {
+          compareHtml = `
+            <div class="ss-compare-bar">
+              <div class="ss-compare-left">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+                <span>More than your product</span>
+              </div>
+              <div class="ss-compare-vs down">+${pct}%</div>
+            </div>`;
+        } else {
+          compareHtml = `
+            <div class="ss-compare-bar">
+              <div class="ss-compare-left">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                <span>Same price</span>
+              </div>
+              <div class="ss-compare-vs">=</div>
+            </div>`;
+        }
+      }
+
+      // ═══ Match bar (للبحث النصي فقط) ═══
+      const matchBar = !s.isSmartMatch ? `
+        <div class="ss-match-bar">
+          <div class="ss-match-track">
+            <div class="ss-match-fill ${s.similarity >= 50 ? "" : s.similarity >= 25 ? "mid" : "low"}"
+                 style="width:${s.similarity}%"></div>
+          </div>
+          <div class="ss-match-text">${s.similarity}% MATCH</div>
+        </div>` : "";
 
       const imgHtml = s.img
         ? `<img src="${s.img}" loading="lazy" onerror="this.style.display='none';this.parentElement.innerHTML='🖼️'">`
         : `🖼️`;
 
       return `
-        <div class="ss-row ${rowClass}" data-idx="${i}">
-          ${tag}
-          <div class="ss-rank ${rankClass}">${rank}</div>
-          <div class="ss-thumb">${imgHtml}</div>
-          <div class="ss-info">
-            <div class="ss-store">${esc(s.store)}</div>
-            <div class="ss-meta">${metaItems}</div>
-          </div>
-          <div class="ss-price-col">
-            <div class="ss-price-line">
-              <span class="ss-price-now">${formatPrice(s.price, currentProduct.currency)}</span>
-              ${discountBadge}
+        <div class="ss-card ${cardClass}" data-idx="${i}">
+          <div class="ss-card-top">
+            <div class="ss-rank-wrap">
+              <div class="ss-rank ${rankClass}">${rank}</div>
+              ${badge}
             </div>
-            ${oldPriceHtml}
           </div>
+
+          <div class="ss-card-main">
+            <div class="ss-card-thumb">${imgHtml}</div>
+            <div class="ss-card-body">
+              <div class="ss-card-title">${esc(s.store)}</div>
+              <div class="ss-card-price-row">
+                <span class="ss-price-now">${formatPrice(s.price, currentProduct.currency)}</span>
+                ${oldPriceHtml}
+                ${discountBadge}
+              </div>
+              <div class="ss-card-tags">${tags.join("")}</div>
+            </div>
+          </div>
+
+          ${compareHtml}
+          ${matchBar}
         </div>
       `;
     }).join("");
 
-    list.querySelectorAll(".ss-row").forEach(row => {
-      row.addEventListener("click", () => {
-        const item = items[+row.dataset.idx];
+    list.querySelectorAll(".ss-card").forEach(card => {
+      card.addEventListener("click", () => {
+        const item = items[+card.dataset.idx];
         if (item?.link) window.open(item.link, "_blank", "noopener");
       });
     });
   }
+
+  // ═══════════════════════════════════════════════════════
+  // DRAG
+  // ═══════════════════════════════════════════════════════
 
   function makeDraggable(panel) {
     const header = panel.querySelector(".ss-header");
@@ -788,11 +880,15 @@
     } catch (_) {}
   }
 
+  // ═══════════════════════════════════════════════════════
+  // MAIN
+  // ═══════════════════════════════════════════════════════
+
   async function run() {
     await sleep(1500);
     currentProduct = extractProduct();
     console.log("[Smart Shopper] ════════════════════════════════");
-    console.log("[Smart Shopper] v26.6 FINAL — Smart Match");
+    console.log("[Smart Shopper] v27 RICH — Smart Match");
     console.log("[Smart Shopper] Worker:", WORKER_URL);
     console.log("[Smart Shopper] Product:", currentProduct);
     console.log("[Smart Shopper] ════════════════════════════════");
@@ -811,5 +907,5 @@
   });
 
   run();
-  console.log("[Smart Shopper] v26.6 ready.");
+  console.log("[Smart Shopper] v27 RICH ready.");
 })();
