@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════════════════
-   Smart Shopper — Content Script (v33)
-   Smart Match API + Strict filtering.
+   Smart Shopper — Content Script (v34)
+   Smart Match API + Lenient filtering + Raw fallback.
    ═══════════════════════════════════════════════════════ */
 
 (function () {
@@ -13,7 +13,7 @@
   const LANG = typeof SS_LANG !== "undefined" ? SS_LANG : "en";
   const IS_RTL = typeof SS_RTL !== "undefined" ? SS_RTL : false;
 
-  console.log(`[Smart Shopper] v33 | Lang: ${LANG}`);
+  console.log(`[Smart Shopper] v34 | Lang: ${LANG}`);
 
   const PANEL_ID = "ss-floating-panel";
   const WORKER_URL = "https://cold-art-c5df.fislilouiza91.workers.dev";
@@ -195,38 +195,6 @@
     return null;
   }
 
-  /**
-   * ⭐ السعر الكامل (قبل Welcome Deal) — يُستخدم كسعر مرجعي للفلترة
-   */
-  function getFullPrice() {
-    // البحث عن السعر المشطوب
-    const priceEls = document.querySelectorAll("[class*='price'], [class*='Price']");
-    for (const el of priceEls) {
-      const cls = (el.className || "").toString().toLowerCase();
-      const style = (el.getAttribute("style") || "").toLowerCase();
-
-      const isOld = /(old|origin|del|through|cross|before|strike)/i.test(cls) || /line-through/.test(style);
-      if (!isOld) continue;
-
-      const txt = (el.innerText || "").trim();
-      const nums = extractNumbers(txt);
-      if (nums.length && nums[0].value > 0) {
-        return nums[0].value;
-      }
-    }
-
-    // البحث في النص العام (أول سعر كبير)
-    const topText = (document.body.innerText || "").slice(0, 3000);
-    const matches = [...topText.matchAll(/US\s*\$\s*([\d.,]+)/g)];
-    const prices = matches
-      .map(m => parseFloat(m[1].replace(",", ".")))
-      .filter(v => v > 0)
-      .sort((a, b) => b - a);
-
-    if (prices.length) return prices[0];
-    return null;
-  }
-
   function getProductId() {
     const m =
       location.pathname.match(/\/item\/(\d+)/) ||
@@ -323,7 +291,7 @@
   }
 
   // ═══════════════════════════════════════════════════════
-  // ⭐ MAP SMART MATCH PRODUCT (with filtering)
+  // MAP SMART MATCH PRODUCT
   // ═══════════════════════════════════════════════════════
 
   function mapSmartMatchProduct(p, referencePrice) {
@@ -335,19 +303,19 @@
     const finalOld = (oldP > price && price > 0) ? oldP : 0;
     const discount = finalOld > 0 ? Math.round((1 - price / finalOld) * 100) : 0;
 
-    // ⭐ فلترة السعر: 40% - 250% من السعر المرجعي
+    // فلترة السعر: 30% - 400%
     if (referencePrice > 0 && price > 0) {
       const ratio = price / referencePrice;
-      if (ratio < 0.4 || ratio > 2.5) {
+      if (ratio < 0.3 || ratio > 4.0) {
         console.log(`[Smart Shopper] ❌ Reject price $${price} (ratio ${ratio.toFixed(2)})`);
         return null;
       }
     }
 
-    // ⭐ فلترة الكلمات المفتاحية: 2+ على الأقل
+    // فلترة الكلمات: 1+
     const currentKw = getKeywords(currentProduct.title);
     const kwMatches = countKeywords(title, currentKw);
-    if (kwMatches < 2) {
+    if (kwMatches < 1) {
       console.log(`[Smart Shopper] ❌ Reject "${title.slice(0, 40)}" (kw: ${kwMatches})`);
       return null;
     }
@@ -365,6 +333,28 @@
       similarity: 100,
       isSmartMatch: true,
       kwMatches,
+    };
+  }
+
+  function mapRawProduct(p) {
+    const price = parseFloat(p.target_sale_price || p.sale_price || 0);
+    const oldP = parseFloat(p.target_original_price || p.original_price || 0);
+    const rating = parseFloat(String(p.evaluate_rate || "0").replace("%", "")) / 20;
+    const finalOld = (oldP > price && price > 0) ? oldP : 0;
+
+    return {
+      store: p.shop_name || p.store_name || "AliExpress Seller",
+      img: p.product_main_image_url || "",
+      price,
+      oldPrice: finalOld,
+      discount: finalOld > 0 ? Math.round((1 - price / finalOld) * 100) : 0,
+      rating: rating > 0 && rating <= 5 ? +rating.toFixed(1) : 0,
+      sold: parseInt(p.lastest_volume || p.volume || 0, 10),
+      link: p.promotion_link || p.product_detail_url || "",
+      title: p.product_title || p.product_name || "",
+      similarity: 100,
+      isSmartMatch: true,
+      kwMatches: 0,
     };
   }
 
@@ -449,7 +439,7 @@
   }
 
   // ═══════════════════════════════════════════════════════
-  // ⭐ DO SCAN — API + Filtering
+  // DO SCAN
   // ═══════════════════════════════════════════════════════
 
   async function doScan() {
@@ -462,25 +452,26 @@
       const smart = await fetchSmartMatch(currentProduct);
 
       if (smart.ok && smart.products.length > 0) {
-        // ⭐ السعر المرجعي (الكامل)
-        const fullPrice = getFullPrice() || currentProduct.price;
-        console.log(`[Smart Shopper] Reference price: $${fullPrice}`);
+        const referencePrice = currentProduct.price;
+        console.log(`[Smart Shopper] Reference price: $${referencePrice}`);
         console.log(`[Smart Shopper] Raw API: ${smart.products.length} results`);
 
-        // ⭐ تحويل + فلترة
         const mapped = smart.products
-          .map(p => mapSmartMatchProduct(p, fullPrice))
+          .map(p => mapSmartMatchProduct(p, referencePrice))
           .filter(Boolean);
 
         console.log(`[Smart Shopper] After filter: ${mapped.length}`);
 
         sellers = rankProducts(mapped);
 
-        if (sellers.length > 0) {
-          updateSourceLabel("smart");
-        } else {
-          updateSourceLabel("none");
+        // ⭐ إذا الفلتر رفض كل شيء → اعرض Raw API
+        if (sellers.length === 0) {
+          console.log("[Smart Shopper] ⚠️ Filter rejected all — showing raw API");
+          const rawMapped = smart.products.map(mapRawProduct).filter(s => s.price > 0);
+          sellers = rankProducts(rawMapped);
         }
+
+        updateSourceLabel(sellers.length > 0 ? "smart" : "none");
         renderList();
         return;
       }
@@ -714,10 +705,9 @@
     await sleep(800);
     currentProduct = extractProduct();
     console.log("[Smart Shopper] ════════════════════════════════");
-    console.log("[Smart Shopper] v33 — Smart Match + Filtering");
+    console.log("[Smart Shopper] v34 — Smart Match API");
     console.log("[Smart Shopper] Worker:", WORKER_URL);
     console.log("[Smart Shopper] Product:", currentProduct);
-    console.log("[Smart Shopper] Full price:", getFullPrice());
     console.log("[Smart Shopper] ════════════════════════════════");
 
     if (!currentProduct.title || currentProduct.title.length < 5) return;
@@ -734,5 +724,5 @@
   });
 
   run();
-  console.log("[Smart Shopper] v33 ready.");
+  console.log("[Smart Shopper] v34 ready.");
 })();
