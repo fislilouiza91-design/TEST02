@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════════════════
-   Smart Shopper — Content Script (v26)
-   SMART MATCH — Same product from different sellers.
+   Smart Shopper — Content Script (v26.1)
+   Smart Match + Fixed price extraction.
    ═══════════════════════════════════════════════════════ */
 
 (function () {
@@ -13,7 +13,7 @@
   const LANG = typeof SS_LANG !== "undefined" ? SS_LANG : "en";
   const IS_RTL = typeof SS_RTL !== "undefined" ? SS_RTL : false;
 
-  console.log(`[Smart Shopper] v26 | Lang: ${LANG}`);
+  console.log(`[Smart Shopper] v26.1 | Lang: ${LANG}`);
 
   const PANEL_ID = "ss-floating-panel";
   const WORKER_URL = "https://cold-art-c5df.fislilouiza91.workers.dev";
@@ -23,7 +23,6 @@
   let activeFilter = "best";
   let minimized = false;
   let isScanning = false;
-  let smartMatchWorked = false;
 
   // ═══════════════════════════════════════════════════════
   // HELPERS
@@ -34,7 +33,7 @@
   const fmt = (n) => n >= 1000 ? (n / 1000).toFixed(1).replace(".0", "") + "k" : String(n);
 
   function formatPrice(v, currency) {
-    if (v == null || isNaN(v)) return "—";
+    if (v == null || isNaN(v) || v === 0) return "—";
     const sym = { USD: "$", EUR: "€", GBP: "£", SAR: "﷼", DA: "DA " }[currency] || "$";
     const num = v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     return IS_RTL ? `${num} ${sym.trim()}` : `${sym}${num}`;
@@ -205,30 +204,21 @@
   }
 
   // ═══════════════════════════════════════════════════════
-  // ⭐ SMART MATCH — Primary method
+  // SMART MATCH
   // ═══════════════════════════════════════════════════════
 
   async function fetchSmartMatch(product) {
-    console.log(`[Smart Shopper] Calling Smart Match for product: ${product.id}`);
-    console.log(`[Smart Shopper] Title: ${product.title.slice(0, 60)}...`);
-    console.log(`[Smart Shopper] Image: ${product.image.slice(0, 80)}...`);
+    console.log(`[Smart Shopper] Smart Match for: ${product.id}`);
 
-    // Build request body — try ID first, then image, then title
     const bodies = [];
-    if (product.id) {
-      bodies.push({ productId: product.id });
-    }
-    if (product.image) {
-      bodies.push({ imageUrl: product.image });
-    }
-    if (product.title) {
-      bodies.push({ productTitle: product.title });
-    }
+    if (product.id) bodies.push({ productId: product.id });
+    if (product.image) bodies.push({ imageUrl: product.image });
+    if (product.title) bodies.push({ productTitle: product.title });
 
     for (const body of bodies) {
       try {
-        const keys = Object.keys(body);
-        console.log(`[Smart Shopper] Trying with: ${keys[0]}`);
+        const key = Object.keys(body)[0];
+        console.log(`[Smart Shopper] Trying: ${key}`);
 
         const res = await fetch(`${WORKER_URL}/api/smart-match`, {
           method: "POST",
@@ -240,7 +230,6 @@
         const payload = await res.json();
         if (!payload.ok) throw new Error(payload.error || "API error");
 
-        // Parse AliExpress Smart Match response
         const resp =
           payload.data?.aliexpress_affiliate_product_smartmatch_response ||
           payload.data?.aliexpress_affiliate_productdetail_get_response;
@@ -251,22 +240,17 @@
           [];
 
         const list = Array.isArray(products) ? products : [products];
-        console.log(`[Smart Shopper] Smart Match (${keys[0]}) returned: ${list.length}`);
+        console.log(`[Smart Shopper] Smart Match (${key}) → ${list.length}`);
 
-        if (list.length > 0) {
-          return { ok: true, method: keys[0], products: list };
-        }
+        if (list.length > 0) return { ok: true, method: key, products: list };
       } catch (e) {
-        console.warn(`[Smart Shopper] Smart Match (${Object.keys(body)[0]}) failed:`, e.message);
+        console.warn(`[Smart Shopper] ${Object.keys(body)[0]} failed:`, e.message);
       }
     }
 
     return { ok: false, method: null, products: [] };
   }
 
-  /**
-   * Map Smart Match API product to our internal format.
-   */
   function mapSmartMatchProduct(p) {
     const price = parseFloat(p.target_sale_price || p.sale_price || 0);
     const oldP = parseFloat(p.target_original_price || p.original_price || 0);
@@ -283,13 +267,13 @@
       sold: parseInt(p.lastest_volume || p.volume || 0, 10),
       link: p.promotion_link || p.product_detail_url || "",
       title: p.product_title || p.product_name || "",
-      similarity: 100, // Smart Match = same product = 100%
+      similarity: 100,
       isSmartMatch: true,
     };
   }
 
   // ═══════════════════════════════════════════════════════
-  // PAGE SCRAPING — Fallback
+  // CARD PARSING
   // ═══════════════════════════════════════════════════════
 
   const BAD_IMG = ["star", "placeholder", "loading", "default", "empty", "blank", "no-image", "noimage", "grey", "gray", "spacer", "pixel", "transparent", "1x1"];
@@ -321,24 +305,34 @@
     return "";
   }
 
+  // ⭐ دالة السعر المُصلَحة (3 مستويات)
   function parseCardPrice(card) {
-    const priceEls = card.querySelectorAll("[class*='price'], [class*='Price']");
+    const txt = card.innerText || "";
     let current = 0, old = 0;
+
+    // ═══ 1. Class-based ═══
+    const priceEls = card.querySelectorAll("[class*='price'], [class*='Price']");
     for (const el of priceEls) {
       const cls = (el.className || "").toString().toLowerCase();
       const style = (el.getAttribute("style") || "").toLowerCase();
-      const txt = (el.innerText || "").trim();
-      if (!txt || isExcludedContext(txt)) continue;
-      const isOld = /(old|origin|del|through|cross|before|strike)/i.test(cls) || /line-through/.test(style);
-      const nums = extractNumbers(txt);
+      const elTxt = (el.innerText || "").trim();
+      if (!elTxt) continue;
+      if (isExcludedContext(elTxt)) continue;
+
+      const nums = extractNumbers(elTxt);
       if (!nums.length) continue;
+
       const v = nums[0].value;
       if (v < 0.5) continue;
+
+      const isOld = /(old|origin|del|through|cross|before|strike)/i.test(cls) || /line-through/.test(style);
+
       if (isOld) old = Math.max(old, v);
       else current = Math.max(current, v);
     }
+
+    // ═══ 2. Fallback: أي رقم في البطاقة ═══
     if (!current) {
-      const txt = card.innerText || "";
       const nums = extractNumbers(txt).filter(n => {
         if (n.value < 0.5) return false;
         const s = Math.max(0, n.index - 50);
@@ -346,18 +340,34 @@
         return !isExcludedContext(txt.slice(s, e));
       });
       if (nums.length) {
-        nums.sort((a, b) => a.value - b.value);
-        current = nums[nums.length - 1];
+        nums.sort((a, b) => b.value - a.value);
+        current = nums[0].value;
       }
     }
+
+    // ═══ 3. Last resort: أي رقم عشري في النص ═══
+    if (!current) {
+      const decimalNums = txt.match(/([\d]+[.,][\d]{2})/g) || [];
+      const parsed = decimalNums
+        .map(n => parseFloat(n.replace(",", ".")))
+        .filter(v => v >= 0.5);
+      if (parsed.length) {
+        parsed.sort((a, b) => b - a);
+        current = parsed[0];
+      }
+    }
+
+    // ═══ 4. الخصم ═══
     let discount = 0;
-    const dMatch = (card.innerText || "").match(/[-−]\s*(\d{1,2})\s*%/);
+    const dMatch = txt.match(/[-−]\s*(\d{1,2})\s*%/);
     if (dMatch) {
       const d = parseInt(dMatch[1], 10);
       if (d >= 5 && d <= 90) discount = d;
     }
+
     if (old > 0 && old <= current) old = 0;
     if (!discount && old > current && current > 0) discount = Math.round((1 - current / old) * 100);
+
     return { price: current, oldPrice: old, discount };
   }
 
@@ -569,25 +579,23 @@
   async function doScan() {
     if (isScanning) return;
     isScanning = true;
-    smartMatchWorked = false;
     renderLoading();
 
     try {
-      // ⭐ STEP 1: Try Smart Match
+      // STEP 1: Smart Match
       console.log("[Smart Shopper] ═══ STEP 1: Smart Match ═══");
       const smart = await fetchSmartMatch(currentProduct);
 
       if (smart.ok && smart.products.length > 0) {
-        smartMatchWorked = true;
         sellers = rankProducts(smart.products.map(mapSmartMatchProduct));
-        console.log(`[Smart Shopper] ✅ Smart Match: ${sellers.length} same-product sellers`);
+        console.log(`[Smart Shopper] ✅ Smart Match: ${sellers.length}`);
         updateSourceLabel("smart");
         renderList();
         return;
       }
 
-      // ⭐ STEP 2: Fallback to page scraping
-      console.log("[Smart Shopper] ═══ STEP 2: Page scraping (fallback) ═══");
+      // STEP 2: Fallback
+      console.log("[Smart Shopper] ═══ STEP 2: Page fallback ═══");
       const currentKeywords = getKeywords(currentProduct.title);
       await autoScroll();
       const candidates = scrapePage(currentKeywords);
@@ -678,12 +686,12 @@
     if (!sellers.length) return renderEmpty();
 
     const items = sortSellers(sellers, activeFilter);
-    const minPrice = Math.min(...items.map(s => s.price));
+    const minPrice = Math.min(...items.map(s => s.price).filter(p => p > 0));
     const currentPrice = currentProduct?.price;
 
     list.innerHTML = items.slice(0, 12).map((s, i) => {
       const rank = i + 1;
-      const isCheap = s.price === minPrice;
+      const isCheap = s.price === minPrice && s.price > 0;
       const rowClass = rank === 1 ? "ss-best" : (isCheap ? "ss-cheap" : "");
       const rankClass = rank <= 3 ? `ss-r${rank}` : "";
 
@@ -694,7 +702,6 @@
       else if (activeFilter === "best" && rank === 1) tag = `<span class="ss-tag ss-best">${T("bestValueTag")}</span>`;
       else if (isCheap) tag = `<span class="ss-tag ss-cheap">${T("bestPrice")}</span>`;
 
-      // Smart Match badge (100%)
       const simBadge = s.isSmartMatch
         ? `<span class="ss-sim ss-sim-high" style="background:#dbeafe;color:#1e40af">✓</span>`
         : s.similarity >= 50
@@ -798,7 +805,7 @@
     await sleep(1500);
     currentProduct = extractProduct();
     console.log("[Smart Shopper] ════════════════════════════════");
-    console.log("[Smart Shopper] v26 — Smart Match Mode");
+    console.log("[Smart Shopper] v26.1 — Smart Match Mode");
     console.log("[Smart Shopper] Worker:", WORKER_URL);
     console.log("[Smart Shopper] Product:", currentProduct);
     console.log("[Smart Shopper] ════════════════════════════════");
@@ -817,5 +824,5 @@
   });
 
   run();
-  console.log("[Smart Shopper] v26 ready (Smart Match enabled).");
+  console.log("[Smart Shopper] v26.1 ready.");
 })();
