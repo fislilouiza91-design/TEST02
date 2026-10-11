@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════════════════
-   Smart Shopper — Content Script (v29 STRICT)
-   STRICT matching: same brand + same model only.
+   Smart Shopper — Content Script (v30 TIERED)
+   Smart Match + 4-level tiered filtering.
    ═══════════════════════════════════════════════════════ */
 
 (function () {
@@ -13,17 +13,17 @@
   const LANG = typeof SS_LANG !== "undefined" ? SS_LANG : "en";
   const IS_RTL = typeof SS_RTL !== "undefined" ? SS_RTL : false;
 
-  console.log(`[Smart Shopper] v29 STRICT | Lang: ${LANG}`);
+  console.log(`[Smart Shopper] v30 TIERED | Lang: ${LANG}`);
 
   const PANEL_ID = "ss-floating-panel";
   const WORKER_URL = "https://cold-art-c5df.fislilouiza91.workers.dev";
-  const SIMILARITY_THRESHOLD = 60; // ⭐ 60% minimum
 
   let currentProduct = null;
   let sellers = [];
   let activeFilter = "cheap";
   let minimized = false;
   let isScanning = false;
+  let lastTier = 0;
 
   const sleep = (ms) => new Promise(r => setTimeout(r, ms));
   const esc = (s) => { const d = document.createElement("div"); d.textContent = s; return d.innerHTML; };
@@ -332,38 +332,27 @@
   }
 
   // ═══════════════════════════════════════════════════════
-  // ⭐ BRAND & MODEL EXTRACTION — للتدقيق
+  // BRAND & MODEL EXTRACTION
   // ═══════════════════════════════════════════════════════
 
   function extractBrand(title) {
     if (!title) return "";
-    // ALL-CAPS brand at start (CAOFEN, ROCKBROS, EKX)
     let m = title.match(/^\s*([A-Z][A-Z0-9]{2,15})\b/);
     if (m) return m[1].toUpperCase();
-
-    // Capitalized brand at start
     m = title.match(/^\s*([A-Z][a-z]{2,15})\b/);
     if (m) return m[1].toUpperCase();
-
-    // Look in first 60 chars
     m = title.slice(0, 60).match(/\b([A-Z][A-Z0-9]{2,15})\b/);
     if (m) return m[1].toUpperCase();
-
     return "";
   }
 
   function extractModels(title) {
     if (!title) return [];
     const set = new Set();
-
-    // Letter+numbers (F80, X21, TS9, TWS)
     let matches = title.match(/\b[A-Z]{1,4}\d{1,5}[A-Z]?\b/g) || [];
     matches.forEach(m => set.add(m.toUpperCase()));
-
-    // Number+Letter
     matches = title.match(/\b\d{1,5}[A-Z]{2,4}\b/g) || [];
     matches.forEach(m => set.add(m.toUpperCase()));
-
     return Array.from(set).slice(0, 5);
   }
 
@@ -407,15 +396,10 @@
     return c;
   }
 
-  // ═══════════════════════════════════════════════════════
-  // ⭐ SIMILARITY SCORE — 0-100
-  // ═══════════════════════════════════════════════════════
-
   function computeSimilarity(cardTitle, currentKeywords, currentBrand, currentModels) {
     let score = 0;
     const reasons = [];
 
-    // 1) Brand match (+30)
     const cardBrand = extractBrand(cardTitle);
     const brandMatch = currentBrand && cardBrand && currentBrand === cardBrand;
     if (brandMatch) {
@@ -423,14 +407,12 @@
       reasons.push("brand");
     }
 
-    // 2) Model match (+25 each, max 50)
     const modelMatches = countModelMatches(cardTitle, currentModels);
     if (modelMatches > 0) {
       score += Math.min(modelMatches * 25, 50);
       reasons.push(`${modelMatches}m`);
     }
 
-    // 3) Keyword match (+5 each, max 40)
     const kwMatches = countKeywords(cardTitle, currentKeywords);
     score += Math.min(kwMatches * 5, 40);
     if (kwMatches > 0) reasons.push(`${kwMatches}k`);
@@ -560,7 +542,7 @@
   }
 
   // ═══════════════════════════════════════════════════════
-  // ⭐ SCRAPE WITH STRICT FILTERS
+  // ⭐ TIERED SCRAPER
   // ═══════════════════════════════════════════════════════
 
   function scrapePage(currentKeywords, currentBrand, currentModels) {
@@ -573,7 +555,8 @@
     console.log(`[Smart Shopper] Brand: "${currentBrand}" | Models: [${currentModels.join(",")}]`);
     console.log(`[Smart Shopper] Keywords: [${currentKeywords.slice(0, 6).join(",")}]`);
 
-    let skipped = { noImg: 0, noPrice: 0, noTitle: 0, lowSim: 0 };
+    const allCandidates = [];
+    let skipped = { noImg: 0, noPrice: 0, noTitle: 0 };
 
     for (const link of links) {
       try {
@@ -588,20 +571,12 @@
         const title = parseCardTitle(card);
         if (!title || title.length < 8) { skipped.noTitle++; continue; }
 
-        // ⭐ حساب التشابه
         const sim = computeSimilarity(title, currentKeywords, currentBrand, currentModels);
-
-        // ⭐ شرط صارم: 60% similarity
-        if (sim.score < SIMILARITY_THRESHOLD) {
-          skipped.lowSim++;
-          continue;
-        }
-
         const sold = parseCardSold(card);
         const rating = parseCardRating(card);
 
         seen.add(href);
-        results.push({
+        allCandidates.push({
           store: title.slice(0, 70).trim(),
           img,
           price: priceInfo.price,
@@ -619,8 +594,42 @@
       } catch (_) {}
     }
 
-    console.log(`[Smart Shopper] Kept: ${results.length} | Skipped:`, skipped);
-    return results;
+    console.log(`[Smart Shopper] Total candidates: ${allCandidates.length}`);
+    console.log(`[Smart Shopper] Skipped:`, skipped);
+
+    // ⭐ Tier 1: 60%+
+    let filtered = allCandidates.filter(c => c.similarity >= 60);
+    let tier = 1;
+
+    // ⭐ Tier 2: 40%+
+    if (filtered.length < 3) {
+      const t2 = allCandidates.filter(c => c.similarity >= 40 && c.similarity < 60);
+      if (t2.length > 0) {
+        filtered = [...filtered, ...t2];
+        tier = 2;
+      }
+    }
+
+    // ⭐ Tier 3: 20%+
+    if (filtered.length < 3) {
+      const t3 = allCandidates.filter(c => c.similarity >= 20 && c.similarity < 40);
+      if (t3.length > 0) {
+        filtered = [...filtered, ...t3];
+        tier = 3;
+      }
+    }
+
+    // ⭐ Tier 4: anything (last resort)
+    if (filtered.length === 0 && allCandidates.length > 0) {
+      filtered = allCandidates.slice(0, 10);
+      tier = 4;
+    }
+
+    console.log(`[Smart Shopper] Tier ${tier}: ${filtered.length} results`);
+    lastTier = tier;
+
+    filtered.sort((a, b) => b.similarity - a.similarity);
+    return filtered;
   }
 
   function rankProducts(products) {
@@ -714,12 +723,13 @@
       if (smart.ok && smart.products.length > 0) {
         sellers = rankProducts(smart.products.map(mapSmartMatchProduct));
         console.log(`[Smart Shopper] ✅ Smart Match: ${sellers.length} EXACT matches`);
+        lastTier = 0;
         updateSourceLabel("smart");
         renderList();
         return;
       }
 
-      console.log("[Smart Shopper] ═══ STEP 2: Page fallback (STRICT) ═══");
+      console.log("[Smart Shopper] ═══ STEP 2: Page scan (tiered) ═══");
       const currentKeywords = getKeywords(currentProduct.title);
       const currentBrand = extractBrand(currentProduct.title);
       const currentModels = extractModels(currentProduct.title);
@@ -728,8 +738,14 @@
       const candidates = scrapePage(currentKeywords, currentBrand, currentModels);
       sellers = rankProducts(candidates);
 
-      console.log(`[Smart Shopper] ✅ Page strict: ${sellers.length} matches (≥${SIMILARITY_THRESHOLD}%)`);
-      updateSourceLabel(sellers.length > 0 ? "page" : "none");
+      console.log(`[Smart Shopper] ✅ Page result: ${sellers.length} (tier ${lastTier})`);
+
+      if (lastTier === 1) updateSourceLabel("page-exact");
+      else if (lastTier === 2) updateSourceLabel("page-close");
+      else if (lastTier === 3) updateSourceLabel("page-related");
+      else if (lastTier === 4) updateSourceLabel("page-any");
+      else updateSourceLabel("none");
+
       renderList();
     } catch (e) {
       console.error("[Smart Shopper] Scan error:", e);
@@ -744,7 +760,10 @@
     const el = document.getElementById("ss-source");
     if (!el) return;
     if (mode === "smart") el.textContent = T("sameProduct") + " ✓";
-    else if (mode === "page") el.textContent = T("similarMatched") + ` (≥${SIMILARITY_THRESHOLD}%)`;
+    else if (mode === "page-exact") el.textContent = T("sameProduct") + " (exact)";
+    else if (mode === "page-close") el.textContent = T("similarMatched");
+    else if (mode === "page-related") el.textContent = T("related");
+    else if (mode === "page-any") el.textContent = "Suggestions";
     else el.textContent = T("scanning");
   }
 
@@ -796,9 +815,9 @@
     list.innerHTML = `
       <div class="ss-empty">
         <div class="ss-empty-icon">🎯</div>
-        <div class="ss-empty-title">No exact matches found</div>
+        <div class="ss-empty-title">No matches found</div>
         <div class="ss-empty-sub">
-          AliExpress doesn't list the same product from other sellers on this page.<br>
+          AliExpress doesn't list similar products for this item on this page.<br>
           Try a different product.
         </div>
         <button class="ss-empty-btn" id="ss-retry">${T("scanAgain")}</button>
@@ -871,7 +890,7 @@
       const matchLine = !s.isSmartMatch ? `
         <div class="ss-match-line">
           <div class="ss-match-track">
-            <div class="ss-match-fill ${s.similarity >= 80 ? "" : s.similarity >= 60 ? "mid" : "low"}"
+            <div class="ss-match-fill ${s.similarity >= 60 ? "" : s.similarity >= 40 ? "mid" : "low"}"
                  style="width:${s.similarity}%"></div>
           </div>
           <div class="ss-match-text">${s.similarity}% MATCH</div>
@@ -966,8 +985,7 @@
     await sleep(1500);
     currentProduct = extractProduct();
     console.log("[Smart Shopper] ════════════════════════════════");
-    console.log("[Smart Shopper] v29 STRICT — Same product only");
-    console.log("[Smart Shopper] Threshold:", SIMILARITY_THRESHOLD + "%");
+    console.log("[Smart Shopper] v30 TIERED — Smart Match + 4 tiers");
     console.log("[Smart Shopper] Worker:", WORKER_URL);
     console.log("[Smart Shopper] Product:", currentProduct);
     console.log("[Smart Shopper] Brand:", extractBrand(currentProduct.title));
@@ -988,5 +1006,5 @@
   });
 
   run();
-  console.log("[Smart Shopper] v29 ready.");
+  console.log("[Smart Shopper] v30 ready.");
 })();
