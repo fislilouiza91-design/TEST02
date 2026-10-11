@@ -1,9 +1,0 @@
-name: TEST01-main Archive
-on: [push]
-jobs:
-  unzip:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - name: Unzip files
-        run: unzip archive.zip -d extracted_folder/
