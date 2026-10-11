@@ -1,28 +1,33 @@
-name: Unzip Archive
+name: Unzip Any Archive
 
 on:
   push:
-    paths:
-      - '*.zip' # يعمل عند رفع أي ملف zip
-  workflow_dispatch: # هذا السطر يسمح لك بتشغيله يدوياً بزر
+  workflow_dispatch: # يسمح لك بتشغيله يدوياً في أي وقت
 
 jobs:
   unzip:
     runs-on: ubuntu-latest
     permissions:
-      contents: write # ضروري لرفع الملفات المفكوكة
+      contents: write # ضروري جداً لكي يستطيع رفع الملفات المفكوكة
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Unzip files
-        run: unzip -o TEST01-main.zip -d extracted_folder/
+      - name: Unzip all zip files
+        run: |
+          # البحث عن أي ملف ينتهي بـ zip وفك ضغطه
+          for file in *.zip; do
+            if [ -f "$file" ]; then
+              echo "جاري فك ضغط الملف: $file"
+              unzip -o "$file" -d extracted_folder/
+            fi
+          done
 
       - name: Commit extracted files
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add extracted_folder/
-          git commit -m "Extract TEST01-main.zip" || echo "No changes to commit"
+          git commit -m "Auto-extract zip files" || echo "No changes to commit"
           git push
