@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════════════════
-   Smart Shopper — Content Script (v26.1)
-   Smart Match + Fixed price extraction.
+   Smart Shopper — Content Script (v26.2)
+   Fixed: image loading with retry + better filters.
    ═══════════════════════════════════════════════════════ */
 
 (function () {
@@ -13,7 +13,7 @@
   const LANG = typeof SS_LANG !== "undefined" ? SS_LANG : "en";
   const IS_RTL = typeof SS_RTL !== "undefined" ? SS_RTL : false;
 
-  console.log(`[Smart Shopper] v26.1 | Lang: ${LANG}`);
+  console.log(`[Smart Shopper] v26.2 | Lang: ${LANG}`);
 
   const PANEL_ID = "ss-floating-panel";
   const WORKER_URL = "https://cold-art-c5df.fislilouiza91.workers.dev";
@@ -273,44 +273,87 @@
   }
 
   // ═══════════════════════════════════════════════════════
-  // CARD PARSING
+  // ⭐ IMAGE EXTRACTION — مُحسَّن
   // ═══════════════════════════════════════════════════════
 
-  const BAD_IMG = ["star", "placeholder", "loading", "default", "empty", "blank", "no-image", "noimage", "grey", "gray", "spacer", "pixel", "transparent", "1x1"];
-  const isBadImage = (src) => {
+  const BAD_IMG_PATTERNS = [
+    "star", "placeholder", "loading", "default", "empty", "blank",
+    "no-image", "noimage", "grey", "gray", "spacer", "pixel",
+    "transparent", "1x1", "img.alicdn.com/tps",
+    "choice", "/kf/Hash", // Choice logo
+    "logo", "icon", "badge", "flag", "avatar",
+    "ae01.alicdn.com/kf/S", // smaller one may be placeholder
+    "gtms", "ae02.alicdn.com/kf/H", // sometimes placeholder
+  ];
+
+  function isBadImage(src) {
     if (!src || !src.startsWith("http")) return true;
     const low = src.toLowerCase();
-    return BAD_IMG.some(p => low.includes(p)) || (low.includes(".svg") && low.length < 300);
-  };
+    for (const p of BAD_IMG_PATTERNS) {
+      if (low.includes(p)) return true;
+    }
+    // SVG placeholders
+    if (low.includes(".svg") && low.length < 300) return true;
+    // Must have product image keywords
+    if (!low.includes(".jpg") && !low.includes(".jpeg") && !low.includes(".png") && !low.includes(".webp")) {
+      // allow some URLs without extension (ali CDN sometimes)
+      if (!low.includes("alicdn.com/kf/")) return true;
+    }
+    return false;
+  }
 
   function getImgSrc(img) {
     if (!img) return "";
+
+    // 1) currentSrc (browser-loaded image)
     if (img.currentSrc && !isBadImage(img.currentSrc)) return img.currentSrc;
+
+    // 2) srcset (usually has real image)
     const srcset = img.getAttribute("srcset");
     if (srcset) {
       const entries = srcset.split(",").map(s => s.trim().split(" ")[0]);
-      for (let i = entries.length - 1; i >= 0; i--) if (!isBadImage(entries[i])) return entries[i];
+      for (let i = entries.length - 1; i >= 0; i--) {
+        if (!isBadImage(entries[i])) return entries[i];
+      }
     }
+
+    // 3) data-src (lazy loaded)
     const dataSrc = img.getAttribute("data-src");
-    if (dataSrc && !isBadImage(dataSrc)) return dataSrc.startsWith("//") ? "https:" + dataSrc : dataSrc;
+    if (dataSrc && !isBadImage(dataSrc)) {
+      return dataSrc.startsWith("//") ? "https:" + dataSrc : dataSrc;
+    }
+
+    // 4) data-lazy-src
+    const lazySrc = img.getAttribute("data-lazy-src") || img.getAttribute("lazy-src");
+    if (lazySrc && !isBadImage(lazySrc)) {
+      return lazySrc.startsWith("//") ? "https:" + lazySrc : lazySrc;
+    }
+
+    // 5) src (last resort)
     if (img.src && !isBadImage(img.src)) return img.src;
+
     return "";
   }
 
   function extractRealImage(card) {
-    for (const img of card.querySelectorAll("img")) {
+    // Try multiple images in the card
+    const imgs = card.querySelectorAll("img");
+    for (const img of imgs) {
       const src = getImgSrc(img);
       if (src) return src;
     }
     return "";
   }
 
-  // ⭐ دالة السعر المُصلَحة (3 مستويات)
+  // ═══════════════════════════════════════════════════════
+  // CARD PARSING
+  // ═══════════════════════════════════════════════════════
+
   function parseCardPrice(card) {
     const txt = card.innerText || "";
     let current = 0, old = 0;
 
-    // ═══ 1. Class-based ═══
+    // 1. Class-based
     const priceEls = card.querySelectorAll("[class*='price'], [class*='Price']");
     for (const el of priceEls) {
       const cls = (el.className || "").toString().toLowerCase();
@@ -331,7 +374,7 @@
       else current = Math.max(current, v);
     }
 
-    // ═══ 2. Fallback: أي رقم في البطاقة ═══
+    // 2. Fallback
     if (!current) {
       const nums = extractNumbers(txt).filter(n => {
         if (n.value < 0.5) return false;
@@ -345,7 +388,7 @@
       }
     }
 
-    // ═══ 3. Last resort: أي رقم عشري في النص ═══
+    // 3. Last resort
     if (!current) {
       const decimalNums = txt.match(/([\d]+[.,][\d]{2})/g) || [];
       const parsed = decimalNums
@@ -357,7 +400,7 @@
       }
     }
 
-    // ═══ 4. الخصم ═══
+    // 4. Discount
     let discount = 0;
     const dMatch = txt.match(/[-−]\s*(\d{1,2})\s*%/);
     if (dMatch) {
@@ -431,14 +474,38 @@
     return null;
   }
 
+  // ⭐ Scroll مع انتظار تحميل الصور
   async function autoScroll() {
     const originalY = window.scrollY;
-    for (let i = 0; i < 8; i++) {
-      window.scrollBy(0, 700);
-      await sleep(200);
+    for (let i = 0; i < 10; i++) {
+      window.scrollBy(0, 600);
+      await sleep(250);
     }
     window.scrollTo(0, originalY);
-    await sleep(400);
+    await sleep(500);
+    // ⭐ انتظر تحميل الصور
+    await waitForImages();
+  }
+
+  function waitForImages() {
+    return new Promise((resolve) => {
+      const imgs = Array.from(document.querySelectorAll("img"));
+      const pending = imgs.filter(img => !img.complete);
+      if (pending.length === 0) return resolve();
+
+      let loaded = 0;
+      const total = pending.length;
+      const timer = setTimeout(resolve, 3000);
+
+      pending.forEach(img => {
+        const done = () => {
+          loaded++;
+          if (loaded >= total) { clearTimeout(timer); resolve(); }
+        };
+        img.addEventListener("load", done, { once: true });
+        img.addEventListener("error", done, { once: true });
+      });
+    });
   }
 
   function scrapePage(currentKeywords) {
@@ -458,7 +525,10 @@
         if (!card) continue;
 
         const img = extractRealImage(card);
-        if (!img) continue;
+        if (!img) {
+          console.log(`[Smart Shopper] No image for: ${href.slice(-20)}`);
+          continue;
+        }
 
         const priceInfo = parseCardPrice(card);
         if (!priceInfo.price) continue;
@@ -582,7 +652,6 @@
     renderLoading();
 
     try {
-      // STEP 1: Smart Match
       console.log("[Smart Shopper] ═══ STEP 1: Smart Match ═══");
       const smart = await fetchSmartMatch(currentProduct);
 
@@ -594,7 +663,6 @@
         return;
       }
 
-      // STEP 2: Fallback
       console.log("[Smart Shopper] ═══ STEP 2: Page fallback ═══");
       const currentKeywords = getKeywords(currentProduct.title);
       await autoScroll();
@@ -725,11 +793,16 @@
         priceExtra = `<div class="ss-vs" style="color:#ea580c">+${more}% ${T("vs")} ${formatPrice(currentPrice, currentProduct.currency)}</div>`;
       }
 
+      // ⭐ if no image, show colored placeholder
+      const imgHtml = s.img
+        ? `<img src="${s.img}" loading="lazy" onerror="this.style.display='none';this.parentElement.innerHTML='<span style=\\'font-size:18px\\'>🖼️</span>'">`
+        : `<span style="font-size:18px;display:flex;align-items:center;justify-content:center;height:100%">🖼️</span>`;
+
       return `
         <div class="ss-row ${rowClass}" data-idx="${i}">
           ${tag}
           <div class="ss-rank ${rankClass}">${rank}</div>
-          <div class="ss-thumb"><img src="${s.img}" loading="lazy" onerror="this.parentElement.style.display='none'"></div>
+          <div class="ss-thumb">${imgHtml}</div>
           <div class="ss-info">
             <div class="ss-store">${esc(s.store)}</div>
             <div class="ss-meta">${simBadge}${metaItems}</div>
@@ -805,7 +878,7 @@
     await sleep(1500);
     currentProduct = extractProduct();
     console.log("[Smart Shopper] ════════════════════════════════");
-    console.log("[Smart Shopper] v26.1 — Smart Match Mode");
+    console.log("[Smart Shopper] v26.2 — Smart Match Mode");
     console.log("[Smart Shopper] Worker:", WORKER_URL);
     console.log("[Smart Shopper] Product:", currentProduct);
     console.log("[Smart Shopper] ════════════════════════════════");
@@ -824,5 +897,5 @@
   });
 
   run();
-  console.log("[Smart Shopper] v26.1 ready.");
+  console.log("[Smart Shopper] v26.2 ready.");
 })();
