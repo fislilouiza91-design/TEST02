@@ -22,22 +22,17 @@
   },
 
   "background": {
-    "service_worker": "background/service-worker.js"
+    "service_worker": "background/service-worker.js",
+    "type": "module"
   },
 
   "content_scripts": [
     {
       "matches": [
-        "*://*.aliexpress.com/*",
-        "*://*.aliexpress.us/*",
-        "*://*.aliexpress.ru/*",
-        "*://*.aliexpress.com.tr/*",
-        "*://*.aliexpress.com.br/*",
-        "*://*.aliexpress.com.mx/*",
-        "*://*.aliexpress.com.ar/*",
-        "*://*.aliexpress.cl/*",
-        "*://*.aliexpress.co/*",
-        "*://*.aliexpress.pe/*"
+        "*://*.aliexpress.com/item/*",
+        "*://*.aliexpress.com/i/*",
+        "*://*.aliexpress.us/item/*",
+        "*://*.aliexpress.com/*.html"
       ],
       "js": ["content/i18n.js", "content/content.js"],
       "css": ["content/content.css"],
@@ -55,16 +50,7 @@
   "host_permissions": [
     "*://*.aliexpress.com/*",
     "*://*.aliexpress.us/*",
-    "*://*.aliexpress.ru/*",
-    "*://*.aliexpress.com.tr/*",
-    "*://*.aliexpress.com.br/*",
-    "*://*.aliexpress.com.mx/*",
-    "*://*.aliexpress.com.ar/*",
-    "*://*.aliexpress.cl/*",
-    "*://*.aliexpress.co/*",
-    "*://*.aliexpress.pe/*",
     "https://api-sg.aliexpress.com/*",
-    "https://api.aliexpress.com/*",
-    "https://smart-shopper-proxy.fislilouiza91.workers.dev/*"
+    "https://api.aliexpress.com/*"
   ]
 }
