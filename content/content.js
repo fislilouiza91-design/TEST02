@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════════════════
-   Smart Shopper — Content Script (v45 COGNITIVE)
-   14-layer analysis + 30 queries + semantic matching.
+   Smart Shopper — Content Script (v46 DEEP)
+   18-layer cognitive scoring + 40 queries + image analysis.
    ═══════════════════════════════════════════════════════ */
 
 (function () {
@@ -12,7 +12,7 @@
   const T = typeof SS_T === "function" ? SS_T : (k) => k;
   const IS_RTL = typeof SS_RTL !== "undefined" ? SS_RTL : false;
 
-  console.log(`[Smart Shopper] v45 COGNITIVE`);
+  console.log(`[Smart Shopper] v46 DEEP`);
 
   const PANEL_ID = "ss-floating-panel";
   const WORKER_URL = "https://cold-art-c5df.fislilouiza91.workers.dev";
@@ -84,7 +84,7 @@
   }
 
   // ═══════════════════════════════════════════════════════
-  // IMAGE HASH
+  // ⭐⭐⭐ DEEP IMAGE ANALYSIS
   // ═══════════════════════════════════════════════════════
 
   function extractImageHash(url) {
@@ -98,23 +98,72 @@
     } catch (_) { return ""; }
   }
 
-  function getAllImageHashes() {
-    const hashes = new Set();
-    const og = document.querySelector("meta[property='og:image']")?.getAttribute("content");
-    if (og) {
-      const h = extractImageHash(og);
-      if (h) hashes.add(h);
+  /**
+   * ⭐ استخراج "بصمة الصورة الكاملة":
+   * - hash
+   * - نوع (S/H)
+   * - امتداد
+   * - domain
+   */
+  function imageFingerprint(url) {
+    if (!url) return null;
+    try {
+      const m = url.match(/\/kf\/([SH])([A-Za-z0-9]+)\.(\w+)/);
+      if (m) {
+        return {
+          hash: (m[1] + m[2]).toUpperCase(),
+          type: m[1],
+          ext: m[3].toLowerCase(),
+          full: url,
+        };
+      }
+      // نمط آخر
+      const m2 = url.match(/\/([A-Za-z0-9]{20,})\.(\w+)/);
+      if (m2) {
+        return {
+          hash: m2[1].toUpperCase(),
+          type: "X",
+          ext: m2[2].toLowerCase(),
+          full: url,
+        };
+      }
+      return null;
+    } catch (_) { return null; }
+  }
+
+  function getAllImageFingerprints() {
+    const fingerprints = [];
+    const seen = new Set();
+
+    function addUrl(url) {
+      if (!url || seen.has(url)) return;
+      const fp = imageFingerprint(url);
+      if (fp && !seen.has(fp.hash)) {
+        seen.add(fp.hash);
+        fingerprints.push(fp);
+      }
     }
+
+    // من meta
+    const og = document.querySelector("meta[property='og:image']")?.getAttribute("content");
+    addUrl(og);
+
+    // من الصور
     const imgs = document.querySelectorAll(
       "[class*='image-view'] img, [class*='thumb'] img, [class*='magnifier'] img, [class*='gallery'] img, img[src*='alicdn.com/kf/']"
     );
     for (const img of imgs) {
-      if (hashes.size >= 12) break;
-      const src = img.src || img.getAttribute("data-src") || img.getAttribute("data-large") || "";
-      const h = extractImageHash(src);
-      if (h) hashes.add(h);
+      if (fingerprints.length >= 15) break;
+      addUrl(img.src);
+      addUrl(img.getAttribute("data-src"));
+      addUrl(img.getAttribute("data-large"));
     }
-    return Array.from(hashes);
+
+    return fingerprints;
+  }
+
+  function getAllImageHashes() {
+    return getAllImageFingerprints().map(f => f.hash);
   }
 
   // ═══════════════════════════════════════════════════════
@@ -232,7 +281,6 @@
       ".breadcrumb a",
       "[class*='breadcrumb'] a",
       "[class*='Breadcrumb'] a",
-      "nav[aria-label='breadcrumb'] a",
     ];
     const parts = [];
     for (const sel of sels) {
@@ -248,6 +296,26 @@
       }
     }
     return parts.join(" > ");
+  }
+
+  /**
+   * ⭐ استخراج Category ID من URL
+   */
+  function getCategoryId() {
+    const m = location.href.match(/categoryId=(\d+)/i) || location.href.match(/\/(\d{5,})\/category/i);
+    if (m) return m[1];
+    // من JSON-LD
+    try {
+      const scripts = document.querySelectorAll('script[type="application/ld+json"]');
+      for (const s of scripts) {
+        const data = JSON.parse(s.textContent || "{}");
+        if (data.category) {
+          const cid = String(data.category).match(/(\d{5,})/);
+          if (cid) return cid[1];
+        }
+      }
+    } catch (_) {}
+    return "";
   }
 
   function detectProductType(title) {
@@ -275,25 +343,28 @@
   function extractProduct() {
     const img = getImage();
     const title = getTitle();
+    const fingerprints = getAllImageFingerprints();
     return {
       id: getProductId(),
       title,
       image: img,
       imageHash: extractImageHash(img),
-      imageHashes: getAllImageHashes(),
+      imageFingerprints: fingerprints,
+      imageHashes: fingerprints.map(f => f.hash),
       price: getPrice(),
       currency: detectCurrency(),
       sold: getSold(),
       rating: getRating(),
       store: getOriginalStore(),
       category: getCategory(),
+      categoryId: getCategoryId(),
       productType: detectProductType(title),
       url: location.href.split("?")[0],
     };
   }
 
   // ═══════════════════════════════════════════════════════
-  // ⭐⭐⭐ TEXT ANALYSIS (14 طبقة)
+  // ⭐⭐⭐ DEEP TEXT ANALYSIS
   // ═══════════════════════════════════════════════════════
 
   const STOP_WORDS = new Set([
@@ -309,7 +380,8 @@
 
   const COLOR_WORDS = new Set([
     "black","white","red","blue","green","yellow","pink","purple","silver","gold",
-    "gray","grey","brown","orange","cyan","violet","أحمر","أخضر","أزرق","أسود","أبيض",
+    "gray","grey","brown","orange","cyan","violet","beige","navy",
+    "أحمر","أخضر","أزرق","أسود","أبيض","بني","وردي",
     "noir","blanc","rouge","bleu","vert","jaune","rose","violet","gris","marron",
   ]);
 
@@ -317,10 +389,28 @@
     "xs","s","m","l","xl","xxl","xxxl","small","medium","large","mini","plus","max",
   ]);
 
+  const MATERIAL_WORDS = new Set([
+    "leather","metal","plastic","silicone","glass","wood","cotton","polyester",
+    "steel","aluminum","ceramic","rubber","nylon","fabric","canvas",
+    "جلد","معدن","بلاستيك","خشب","قطن",
+    "cuir","métal","plastique","verre","bois","coton",
+  ]);
+
+  const FEATURE_WORDS = new Set([
+    "waterproof","wireless","bluetooth","rechargeable","foldable","adjustable",
+    "portable","silent","smart","digital","automatic","magnetic","floating",
+    "مقاوم","لاسلكي","بلوتوث","قابل","ذكي",
+    "étanche","sans","rechargeable","pliable","réglable",
+  ]);
+
+  function normalizeText(text) {
+    if (!text) return "";
+    return text.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, " ").replace(/\s+/g, " ").trim();
+  }
+
   function getKeywords(title) {
     if (!title) return [];
-    return title.replace(/[^\p{L}\p{N}\s]/gu, " ").split(/\s+/)
-      .map(w => w.trim().toLowerCase())
+    return normalizeText(title).split(/\s+/)
       .filter(w => w.length > 2 && !STOP_WORDS.has(w) && !/^\d+$/.test(w));
   }
 
@@ -370,7 +460,71 @@
     return models[0] || "";
   }
 
-  // ⭐ Layer 1: Keyword Count
+  /**
+   * ⭐⭐⭐ استخراج Attributes
+   */
+  function extractAttributes(title) {
+    const kws = getKeywords(title);
+    const attrs = {
+      colors: [],
+      sizes: [],
+      materials: [],
+      features: [],
+      numbers: [],
+      capacities: [],
+    };
+
+    kws.forEach(w => {
+      if (COLOR_WORDS.has(w)) attrs.colors.push(w);
+      else if (SIZE_WORDS.has(w)) attrs.sizes.push(w);
+      else if (MATERIAL_WORDS.has(w)) attrs.materials.push(w);
+      else if (FEATURE_WORDS.has(w)) attrs.features.push(w);
+    });
+
+    // الأرقام المهمة
+    const nums = title.match(/\b\d{2,5}\b/g) || [];
+    nums.forEach(n => {
+      const v = parseInt(n, 10);
+      if (v >= 10 && v <= 99999) attrs.numbers.push(n);
+    });
+
+    // السعات
+    const caps = title.match(/\b\d+\s*(gb|tb|mb|mah|w|v|hz|mm|cm|inch|")\b/gi) || [];
+    attrs.capacities = caps.map(c => c.toLowerCase().replace(/\s+/g, ""));
+
+    return attrs;
+  }
+
+  function attributeMatch(attrs1, attrs2) {
+    let score = 0;
+    let total = 0;
+
+    if (attrs1.colors.length > 0) {
+      total++;
+      if (attrs1.colors.some(c => attrs2.colors.includes(c))) score++;
+    }
+    if (attrs1.materials.length > 0) {
+      total++;
+      if (attrs1.materials.some(m => attrs2.materials.includes(m))) score++;
+    }
+    if (attrs1.features.length > 0) {
+      total++;
+      const matches = attrs1.features.filter(f => attrs2.features.includes(f));
+      if (matches.length >= Math.ceil(attrs1.features.length / 2)) score++;
+    }
+    if (attrs1.numbers.length > 0) {
+      total++;
+      const matches = attrs1.numbers.filter(n => attrs2.numbers.includes(n));
+      if (matches.length >= 1) score++;
+    }
+
+    return total > 0 ? score / total : 0.5;
+  }
+
+  // ═══════════════════════════════════════════════════════
+  // ⭐⭐⭐ SIMILARITY METRICS
+  // ═══════════════════════════════════════════════════════
+
   function countKeywords(text, kw) {
     if (!text || !kw.length) return 0;
     const set = new Set(getKeywords(text));
@@ -379,17 +533,15 @@
     return c;
   }
 
-  // ⭐ Layer 2: Jaccard Similarity
   function jaccardSimilarity(t1, t2) {
     const s1 = new Set(getKeywords(t1));
     const s2 = new Set(getKeywords(t2));
     if (!s1.size || !s2.size) return 0;
-    const intersection = [...s1].filter(x => s2.has(x)).length;
+    const inter = [...s1].filter(x => s2.has(x)).length;
     const union = new Set([...s1, ...s2]).size;
-    return union > 0 ? intersection / union : 0;
+    return union > 0 ? inter / union : 0;
   }
 
-  // ⭐ Layer 3: Cosine Similarity (TF-based)
   function cosineSimilarity(t1, t2) {
     const w1 = getKeywords(t1);
     const w2 = getKeywords(t2);
@@ -400,27 +552,60 @@
     w2.forEach(w => tf2[w] = (tf2[w] || 0) + 1);
 
     const allWords = new Set([...Object.keys(tf1), ...Object.keys(tf2)]);
-    let dotProduct = 0, mag1 = 0, mag2 = 0;
+    let dot = 0, m1 = 0, m2 = 0;
 
     allWords.forEach(w => {
       const a = tf1[w] || 0;
       const b = tf2[w] || 0;
-      dotProduct += a * b;
-      mag1 += a * a;
-      mag2 += b * b;
+      dot += a * b;
+      m1 += a * a;
+      m2 += b * b;
     });
 
-    if (mag1 === 0 || mag2 === 0) return 0;
-    return dotProduct / (Math.sqrt(mag1) * Math.sqrt(mag2));
+    if (m1 === 0 || m2 === 0) return 0;
+    return dot / (Math.sqrt(m1) * Math.sqrt(m2));
   }
 
-  // ⭐ Layer 4: Levenshtein
-  function normalizeTitle(title) {
-    if (!title) return "";
-    return title.toLowerCase()
-      .replace(/[^\p{L}\p{N}\s]/gu, " ")
-      .replace(/\s+/g, " ")
-      .trim();
+  /**
+   * ⭐⭐⭐ TF-IDF Weighted Matching
+   */
+  function tfidfSimilarity(t1, t2, allTitles = []) {
+    const w1 = getKeywords(t1);
+    const w2 = getKeywords(t2);
+    if (!w1.length || !w2.length) return 0;
+
+    // حساب document frequency من كل العناوين
+    const df = {};
+    const docs = [t1, t2, ...allTitles];
+    docs.forEach(doc => {
+      const seen = new Set(getKeywords(doc));
+      seen.forEach(w => df[w] = (df[w] || 0) + 1);
+    });
+
+    const N = docs.length;
+    let dot = 0, m1 = 0, m2 = 0;
+
+    const vec1 = {}, vec2 = {};
+    w1.forEach(w => {
+      const idf = Math.log(N / (df[w] || 1));
+      vec1[w] = (vec1[w] || 0) + idf;
+    });
+    w2.forEach(w => {
+      const idf = Math.log(N / (df[w] || 1));
+      vec2[w] = (vec2[w] || 0) + idf;
+    });
+
+    const allW = new Set([...Object.keys(vec1), ...Object.keys(vec2)]);
+    allW.forEach(w => {
+      const a = vec1[w] || 0;
+      const b = vec2[w] || 0;
+      dot += a * b;
+      m1 += a * a;
+      m2 += b * b;
+    });
+
+    if (m1 === 0 || m2 === 0) return 0;
+    return dot / (Math.sqrt(m1) * Math.sqrt(m2));
   }
 
   function levenshtein(a, b) {
@@ -442,15 +627,14 @@
   }
 
   function levenshteinSimilarity(t1, t2) {
-    const a = normalizeTitle(t1);
-    const b = normalizeTitle(t2);
+    const a = normalizeText(t1);
+    const b = normalizeText(t2);
     if (!a || !b) return 0;
     const maxLen = Math.max(a.length, b.length);
     const dist = levenshtein(a, b);
     return Math.max(0, 1 - dist / maxLen);
   }
 
-  // ⭐ Layer 5: N-gram Matching
   function getNgrams(text, n = 2) {
     const words = getKeywordsNoColor(text);
     const ngrams = [];
@@ -464,11 +648,31 @@
     const ng1 = new Set(getNgrams(t1, 2));
     const ng2 = new Set(getNgrams(t2, 2));
     if (!ng1.size || !ng2.size) return 0;
-    const intersection = [...ng1].filter(x => ng2.has(x)).length;
-    return intersection / Math.min(ng1.size, ng2.size);
+    const inter = [...ng1].filter(x => ng2.has(x)).length;
+    return inter / Math.min(ng1.size, ng2.size);
   }
 
-  // ⭐ Layer 6: Number Matching
+  /**
+   * ⭐⭐⭐ Position-Weighted Keywords
+   * أول 3 كلمات لها وزن 3x
+   */
+  function positionWeightSimilarity(t1, t2) {
+    const w1 = getKeywords(t1);
+    const w2 = new Set(getKeywords(t2));
+    if (!w1.length) return 0;
+
+    let weighted = 0;
+    let total = 0;
+
+    w1.forEach((w, idx) => {
+      const weight = idx < 3 ? 3 : idx < 6 ? 2 : 1;
+      total += weight;
+      if (w2.has(w)) weighted += weight;
+    });
+
+    return total > 0 ? weighted / total : 0;
+  }
+
   function extractCriticalNumbers(text) {
     if (!text) return [];
     const nums = text.match(/\b\d{2,5}\b/g) || [];
@@ -481,13 +685,12 @@
   function numberMatch(t1, t2) {
     const n1 = extractCriticalNumbers(t1);
     const n2 = extractCriticalNumbers(t2);
-    if (!n1.length) return 0.5; // محايد
+    if (!n1.length) return 0.5;
     let matches = 0;
     for (const n of n1) if (n2.includes(n)) matches++;
     return matches / n1.length;
   }
 
-  // ⭐ Layer 7: Brand Fuzzy Match
   function normalizeBrand(brand) {
     if (!brand) return "";
     return brand.toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -503,43 +706,26 @@
     return false;
   }
 
-  // ⭐ Layer 8: Category Match
-  function categoryMatch(c1, c2) {
-    if (!c1 || !c2) return 0;
-    const w1 = new Set(c1.split(" > ").map(x => x.trim()).filter(x => x));
-    const w2 = new Set(c2.split(" > ").map(x => x.trim()).filter(x => x));
-    const intersection = [...w1].filter(x => w2.has(x)).length;
-    if (intersection >= 2) return 1;
-    if (intersection === 1) return 0.5;
-    return 0;
-  }
-
-  // ⭐ Layer 9: Type Match
   function typeMatch(t1, t2) {
     if (!t1 || !t2) return 0;
     return t1 === t2 ? 1 : 0;
   }
 
-  // ⭐ Layer 10: Model Score
   function modelScore(t1, t2, primaryModel, allModels) {
     if (!primaryModel && !allModels.length) return 0;
     const upper2 = t2.toUpperCase();
 
-    let score = 0;
     let matched = 0;
+    for (const m of allModels) if (upper2.includes(m)) matched++;
 
-    for (const m of allModels) {
-      if (upper2.includes(m)) matched++;
-    }
+    let score = matched / Math.max(allModels.length, 1);
+    if (primaryModel && upper2.includes(primaryModel)) score = Math.max(score, 1);
 
-    if (primaryModel && upper2.includes(primaryModel)) score += 1;
-    score += matched / Math.max(allModels.length, 1);
-
-    return Math.min(score / 2, 1);
+    return score;
   }
 
   // ═══════════════════════════════════════════════════════
-  // BUILD 30 QUERIES
+  // BUILD QUERIES — 40 استعلام
   // ═══════════════════════════════════════════════════════
 
   function buildMegaQueries(title) {
@@ -548,92 +734,125 @@
     const allModels = extractModels(title);
     const kws = getKeywords(title);
     const kwsNoColor = getKeywordsNoColor(title);
+    const attrs = extractAttributes(title);
     const queries = [];
     const seen = new Set();
 
-    function addQ(name, kw, page = 1, priority = 5) {
+    function addQ(name, kw, page = 1, priority = 5, lang = "EN") {
       kw = (kw || "").trim();
-      if (!kw) return;
-      const key = `${kw.toLowerCase()}@${page}`;
+      if (!kw || kw.length < 2) return;
+      const key = `${kw.toLowerCase()}@${page}@${lang}`;
       if (seen.has(key)) return;
       seen.add(key);
-      queries.push({ name, keywords: kw, page, pageSize: 50, priority });
+      queries.push({ name, keywords: kw, page, pageSize: 50, priority, language: lang });
     }
 
-    // ═══ Priority 1: الأقوى ═══
+    // ═══ P1: أقوى الاستعلامات ═══
     if (brand && primaryModel) {
       addQ("brand+model", `${brand} ${primaryModel}`, 1, 1);
       addQ("brand+model-p2", `${brand} ${primaryModel}`, 2, 1);
     }
 
-    // ═══ Priority 2: Model فقط ═══
+    // ═══ P2: model فقط (3 صفحات) ═══
     if (primaryModel) {
-      addQ("model-only", primaryModel, 1, 2);
-      addQ("model-only-p2", primaryModel, 2, 2);
+      addQ("model-p1", primaryModel, 1, 2);
+      addQ("model-p2", primaryModel, 2, 2);
+      addQ("model-p3", primaryModel, 3, 2);
     }
 
-    // ═══ Priority 3: brand + 3 keywords ═══
+    // ═══ P3: brand + 3 كلمات ═══
     if (brand && kws.length >= 3) {
       addQ("brand+3kw", `${brand} ${kws[0]} ${kws[1]} ${kws[2]}`, 1, 3);
     }
 
-    // ═══ Priority 4: brand + 2 keywords ═══
+    // ═══ P4: brand + 2 كلمات ═══
     if (brand && kws.length >= 2) {
       addQ("brand+2kw", `${brand} ${kws[0]} ${kws[1]}`, 1, 4);
     }
 
-    // ═══ Priority 5: brand فقط ═══
+    // ═══ P5: brand فقط (3 صفحات) ═══
     if (brand) {
-      addQ("brand-only", brand, 1, 5);
+      addQ("brand-p1", brand, 1, 5);
+      addQ("brand-p2", brand, 2, 5);
+      addQ("brand-p3", brand, 3, 5);
     }
 
-    // ═══ Priority 6: Model + keywords ═══
+    // ═══ P6: Model + كلمة ═══
+    if (primaryModel && kws.length >= 1) {
+      addQ("model+kw1", `${primaryModel} ${kws[0]}`, 1, 6);
+    }
     if (primaryModel && kws.length >= 2) {
-      addQ("model+2kw", `${primaryModel} ${kws[0]} ${kws[1]}`, 1, 6);
+      addQ("model+kw2", `${primaryModel} ${kws[0]} ${kws[1]}`, 1, 6);
     }
 
-    // ═══ Priority 7: All models ═══
+    // ═══ P7: كل الموديلات ═══
     if (allModels.length >= 2) {
       addQ("all-models", allModels.slice(0, 3).join(" "), 1, 7);
     }
 
-    // ═══ Priority 8: brand + kw (no color) ═══
+    // ═══ P8: brand + kwNoColor ═══
     if (brand && kwsNoColor.length >= 1) {
-      addQ("brand+kwNoColor", `${brand} ${kwsNoColor[0]}`, 1, 8);
+      addQ("brand+noColor", `${brand} ${kwsNoColor[0]}`, 1, 8);
     }
 
-    // ═══ Priority 9: 4 keywords ═══
+    // ═══ P9: 4 كلمات ═══
     if (kws.length >= 4) {
       addQ("kw4", kws.slice(0, 4).join(" "), 1, 9);
     }
 
-    // ═══ Priority 10: 3 keywords ═══
+    // ═══ P10: 3 كلمات (متنوعة) ═══
     if (kws.length >= 3) {
       addQ("kw3", kws.slice(0, 3).join(" "), 1, 10);
-      addQ("kw3-spread", `${kws[0]} ${kws[2]}`, 1, 10);
+      addQ("kw-spread", `${kws[0]} ${kws[2]}`, 1, 10);
     }
 
-    // ═══ Priority 11: 2 keywords ═══
+    // ═══ P11: 2 كلمات ═══
     if (kws.length >= 2) {
       addQ("kw2", `${kws[0]} ${kws[1]}`, 1, 11);
     }
 
-    // ═══ Priority 12: brand + all models ═══
-    if (brand && allModels.length >= 2) {
-      addQ("brand+allmodels", `${brand} ${allModels.slice(0, 2).join(" ")}`, 1, 12);
+    // ═══ P12: Attributes-based (جديد!) ═══
+    if (attrs.features.length >= 1 && primaryModel) {
+      addQ("model+feature", `${primaryModel} ${attrs.features[0]}`, 1, 12);
+    }
+    if (attrs.materials.length >= 1 && primaryModel) {
+      addQ("model+material", `${primaryModel} ${attrs.materials[0]}`, 1, 12);
+    }
+    if (attrs.colors.length >= 1 && primaryModel) {
+      addQ("model+color", `${primaryModel} ${attrs.colors[0]}`, 1, 12);
     }
 
-    // ═══ Priority 13: reverse keyword order ═══
+    // ═══ P13: Capacities ═══
+    if (attrs.capacities.length >= 1 && primaryModel) {
+      addQ("model+cap", `${primaryModel} ${attrs.capacities[0]}`, 1, 13);
+    }
+
+    // ═══ P14: Numbers ═══
+    if (attrs.numbers.length >= 1 && brand) {
+      addQ("brand+num", `${brand} ${attrs.numbers[0]}`, 1, 14);
+    }
+
+    // ═══ P15: بحث بلغات أخرى (للمنتجات المخفية) ═══
+    if (brand && primaryModel) {
+      addQ("lang-ru", `${brand} ${primaryModel}`, 1, 15, "RU");
+      addQ("lang-es", `${brand} ${primaryModel}`, 1, 15, "ES");
+      addQ("lang-ar", `${brand} ${primaryModel}`, 1, 15, "AR");
+    }
+
+    // ═══ P16: ترتيب معكوس ═══
     if (kws.length >= 3) {
-      addQ("kw-reverse", `${kws[2]} ${kws[0]}`, 1, 13);
+      addQ("kw-rev", `${kws[2]} ${kws[0]}`, 1, 16);
+    }
+    if (brand && primaryModel) {
+      addQ("rev-order", `${primaryModel} ${brand}`, 1, 16);
     }
 
-    // ═══ Priority 14: brand alone صفحة 2 ═══
-    if (brand) {
-      addQ("brand-only-p2", brand, 2, 14);
+    // ═══ P17: بدون brand (لو المنتج مستنسخ) ═══
+    if (kws.length >= 3) {
+      addQ("nobrand", kws.slice(1, 4).join(" "), 1, 17);
     }
 
-    return queries.slice(0, 30);
+    return queries.slice(0, 40);
   }
 
   async function fetchMegaSearch(queries, cacheKey) {
@@ -655,24 +874,24 @@
   function getPriceRange(productType, referencePrice) {
     if (!referencePrice || referencePrice <= 0) return { min: 0, max: Infinity };
     const ranges = {
-      perfume:    { min: 0.15, max: 8 },
-      headphones: { min: 0.3, max: 5 },
-      phone:      { min: 0.5, max: 3 },
-      laptop:     { min: 0.6, max: 2 },
-      watch:      { min: 0.3, max: 5 },
-      charger:    { min: 0.3, max: 6 },
-      storage:    { min: 0.3, max: 5 },
-      camera:     { min: 0.4, max: 4 },
-      shoes:      { min: 0.3, max: 5 },
-      clothes:    { min: 0.3, max: 6 },
-      bag:        { min: 0.3, max: 5 },
-      toy:        { min: 0.2, max: 8 },
-      tool:       { min: 0.3, max: 5 },
-      lighting:   { min: 0.2, max: 8 },
-      fishing:    { min: 0.2, max: 8 },
-      glasses:    { min: 0.3, max: 6 },
-      case:       { min: 0.3, max: 6 },
-      general:    { min: 0.15, max: 7 },
+      perfume:    { min: 0.10, max: 10 },
+      headphones: { min: 0.25, max: 6 },
+      phone:      { min: 0.4, max: 3 },
+      laptop:     { min: 0.5, max: 2.5 },
+      watch:      { min: 0.25, max: 6 },
+      charger:    { min: 0.25, max: 8 },
+      storage:    { min: 0.25, max: 6 },
+      camera:     { min: 0.3, max: 5 },
+      shoes:      { min: 0.25, max: 6 },
+      clothes:    { min: 0.25, max: 8 },
+      bag:        { min: 0.25, max: 6 },
+      toy:        { min: 0.15, max: 10 },
+      tool:       { min: 0.25, max: 6 },
+      lighting:   { min: 0.15, max: 10 },
+      fishing:    { min: 0.15, max: 10 },
+      glasses:    { min: 0.25, max: 8 },
+      case:       { min: 0.25, max: 8 },
+      general:    { min: 0.10, max: 10 },
     };
     const r = ranges[productType] || ranges.general;
     return {
@@ -682,7 +901,7 @@
   }
 
   // ═══════════════════════════════════════════════════════
-  // ⭐⭐⭐ COGNITIVE SCORING (14 layers)
+  // ⭐⭐⭐⭐⭐ 18-LAYER COGNITIVE SCORING
   // ═══════════════════════════════════════════════════════
 
   function cognitiveScore(p, ctx) {
@@ -693,90 +912,107 @@
     const id = String(p.product_id || "");
     const store = (p.shop_name || p.store_name || "").trim();
     const img = p.product_main_image_url || "";
-    const imageHash = extractImageHash(img);
+    const fp = imageFingerprint(img);
+    const imageHash = fp?.hash || "";
 
     if (!id || !price || !title) return null;
     if (id === ctx.productId) return null;
 
     // ═══ Layer 1: Image Hash ═══
-    const hashMatch = ctx.imageHashes.some(h => h === imageHash) ||
-                      (ctx.imageHash && ctx.imageHash === imageHash);
+    const hashMatch = ctx.imageHashes.includes(imageHash);
 
-    // ═══ Layer 2: Brand Fuzzy ═══
+    // ═══ Layer 2: Image Type Match (S/H) ═══
+    const imgTypeMatch = fp && ctx.imageFingerprints.some(f => f.type === fp.type);
+
+    // ═══ Layer 3: Brand Fuzzy ═══
     const cardBrand = extractBrand(title);
     const brandMatch = brandFuzzyMatch(cardBrand, ctx.brand);
 
-    // ═══ Layer 3: Model Match ═══
+    // ═══ Layer 4: Primary Model ═══
     const titleUpper = title.toUpperCase();
     const hasPrimaryModel = ctx.primaryModel && titleUpper.includes(ctx.primaryModel);
+
+    // ═══ Layer 5: All Models ═══
     const allModelsMatch = ctx.models.filter(m => titleUpper.includes(m));
     const modelMatches = allModelsMatch.length;
 
-    // ═══ Layer 4: Keyword Count ═══
+    // ═══ Layer 6: Keywords ═══
     const kwMatches = countKeywords(title, ctx.keywords);
 
-    // ═══ Layer 5: Jaccard ═══
+    // ═══ Layer 7: Jaccard ═══
     const jaccard = jaccardSimilarity(ctx.title, title);
 
-    // ═══ Layer 6: Cosine ═══
+    // ═══ Layer 8: Cosine ═══
     const cosine = cosineSimilarity(ctx.title, title);
 
-    // ═══ Layer 7: Levenshtein ═══
+    // ═══ Layer 9: TF-IDF ═══
+    const tfidf = tfidfSimilarity(ctx.title, title);
+
+    // ═══ Layer 10: Levenshtein ═══
     const lev = levenshteinSimilarity(ctx.title, title);
 
-    // ═══ Layer 8: N-gram ═══
+    // ═══ Layer 11: N-gram ═══
     const ngram = ngramSimilarity(ctx.title, title);
 
-    // ═══ Layer 9: Numbers ═══
+    // ═══ Layer 12: Numbers ═══
     const numbers = numberMatch(ctx.title, title);
 
-    // ═══ Layer 10: Category ═══
-    const catScore = categoryMatch(ctx.category, "") || 0.5;
+    // ═══ Layer 13: Position Weight ═══
+    const posWeight = positionWeightSimilarity(ctx.title, title);
 
-    // ═══ Layer 11: Type ═══
-    const typeScore = typeMatch(ctx.productType, detectProductType(title));
+    // ═══ Layer 14: Attributes ═══
+    const attrs2 = extractAttributes(title);
+    const attrScore = attributeMatch(ctx.attributes, attrs2);
 
-    // ═══ Layer 12: Model Score ═══
-    const modScore = modelScore(ctx.title, title, ctx.primaryModel, ctx.models);
+    // ═══ Layer 15: Type ═══
+    const typeSc = typeMatch(ctx.productType, detectProductType(title));
 
-    // ═══ Layer 13: Price Filter ═══
+    // ═══ Layer 16: Model Score ═══
+    const modSc = modelScore(ctx.title, title, ctx.primaryModel, ctx.models);
+
+    // ═══ Layer 17: Price Filter ═══
     const range = getPriceRange(ctx.productType, ctx.referencePrice);
     if (price < range.min || price > range.max) return null;
 
-    // ═══ Layer 14: Confidence Score ═══
+    // ═══ Layer 18: Confidence Scoring ═══
     let confidence = 0;
-    confidence += hashMatch ? 100 : 0;
-    confidence += brandMatch ? 15 : 0;
-    confidence += hasPrimaryModel ? 20 : 0;
+    confidence += hashMatch ? 150 : 0;
+    confidence += imgTypeMatch ? 3 : 0;
+    confidence += brandMatch ? 20 : 0;
+    confidence += hasPrimaryModel ? 25 : 0;
     confidence += Math.min(modelMatches * 5, 15);
-    confidence += Math.min(kwMatches * 2, 10);
-    confidence += Math.round(jaccard * 20);
-    confidence += Math.round(cosine * 15);
+    confidence += Math.min(kwMatches * 2, 15);
+    confidence += Math.round(jaccard * 25);
+    confidence += Math.round(cosine * 20);
+    confidence += Math.round(tfidf * 20);
     confidence += Math.round(lev * 15);
-    confidence += Math.round(ngram * 15);
+    confidence += Math.round(ngram * 20);
     confidence += Math.round(numbers * 10);
-    confidence += Math.round(catScore * 5);
-    confidence += Math.round(typeScore * 5);
-    confidence += Math.round(modScore * 15);
+    confidence += Math.round(posWeight * 20);
+    confidence += Math.round(attrScore * 15);
+    confidence += Math.round(typeSc * 10);
+    confidence += Math.round(modSc * 20);
 
-    confidence = Math.min(confidence, 100);
+    confidence = Math.min(Math.round(confidence), 100);
 
     // ═══ Tier Determination ═══
     let tier = 99;
-
     if (hashMatch) tier = 1;
-    else if (confidence >= 90) tier = 2;
-    else if (confidence >= 80) tier = 3;
-    else if (confidence >= 70) tier = 4;
-    else if (confidence >= 60) tier = 5;
-    else if (confidence >= 50) tier = 6;
-    else if (confidence >= 40) tier = 7;
-    else if (confidence >= 30) tier = 8;
-    else if (confidence >= 25) tier = 9;
-    else if (confidence >= 20) tier = 10;
-    else if (confidence >= 15) tier = 11;
-    else if (confidence >= 10) tier = 12;
-    else if (confidence >= 5) tier = 13;
+    else if (confidence >= 92) tier = 2;
+    else if (confidence >= 85) tier = 3;
+    else if (confidence >= 78) tier = 4;
+    else if (confidence >= 70) tier = 5;
+    else if (confidence >= 62) tier = 6;
+    else if (confidence >= 55) tier = 7;
+    else if (confidence >= 48) tier = 8;
+    else if (confidence >= 40) tier = 9;
+    else if (confidence >= 33) tier = 10;
+    else if (confidence >= 26) tier = 11;
+    else if (confidence >= 20) tier = 12;
+    else if (confidence >= 15) tier = 13;
+    else if (confidence >= 10) tier = 14;
+    else if (confidence >= 6) tier = 15;
+    else if (confidence >= 3) tier = 16;
     else return null;
 
     const finalOld = (oldP > price && price > 0) ? oldP : 0;
@@ -795,12 +1031,12 @@
       _kwMatches: kwMatches,
       _jaccard: jaccard,
       _cosine: cosine,
+      _tfidf: tfidf,
       _lev: lev,
       _ngram: ngram,
       _numbers: numbers,
-      _catScore: catScore,
-      _typeScore: typeScore,
-      _modScore: modScore,
+      _posWeight: posWeight,
+      _attrScore: attrScore,
       store: store || "AliExpress Seller",
       img,
       price,
@@ -836,7 +1072,7 @@
       if (s._store) seenStores.add(s._store);
       if (s._imageHash) seenHashes.add(s._imageHash);
       accepted.push(s);
-      if (accepted.length >= 25) break;
+      if (accepted.length >= 30) break;
     }
 
     return accepted;
@@ -969,17 +1205,20 @@
       const originalStore = currentProduct.store || "";
       const imageHash = currentProduct.imageHash || "";
       const imageHashes = currentProduct.imageHashes || [];
+      const imageFingerprints = currentProduct.imageFingerprints || [];
+      const attributes = extractAttributes(currentProduct.title);
 
       console.log("═══════════════════════════════════════════");
-      console.log("[Smart Shopper] v45 COGNITIVE");
-      console.log("[Smart Shopper] Title:", currentProduct.title.slice(0, 80));
+      console.log("[Smart Shopper] v46 DEEP");
+      console.log("[Smart Shopper] Title:", currentProduct.title.slice(0, 90));
       console.log("[Smart Shopper] Brand:", brand);
       console.log("[Smart Shopper] Model:", primaryModel);
       console.log("[Smart Shopper] Models:", models);
       console.log("[Smart Shopper] Category:", currentProduct.category);
+      console.log("[Smart Shopper] CategoryId:", currentProduct.categoryId);
       console.log("[Smart Shopper] Type:", currentProduct.productType);
-      console.log("[Smart Shopper] Image Hashes:", imageHashes.length);
-      console.log("[Smart Shopper] Price:", referencePrice);
+      console.log("[Smart Shopper] Images:", imageHashes.length);
+      console.log("[Smart Shopper] Attributes:", attributes);
       console.log("═══════════════════════════════════════════");
 
       const queries = buildMegaQueries(currentProduct.title);
@@ -991,7 +1230,7 @@
         return;
       }
 
-      const cacheKey = `p-${currentProduct.id}-${currentProduct.productType}`;
+      const cacheKey = `v46-${currentProduct.id}-${currentProduct.productType}`;
       const data = await fetchMegaSearch(queries, cacheKey);
       const raw = data?.products || [];
       console.log(`[Smart Shopper] Raw: ${raw.length}${data.cached ? " (cached)" : ""}`);
@@ -1007,8 +1246,10 @@
         originalStore,
         imageHash,
         imageHashes,
+        imageFingerprints,
         productType: currentProduct.productType,
         category: currentProduct.category,
+        attributes,
       };
 
       const scored = [];
@@ -1094,7 +1335,7 @@
         <div class="ss-empty-icon">🧠</div>
         <div class="ss-empty-title">No matches found</div>
         <div class="ss-empty-sub">
-          This product seems unique across ${currentProduct?.productType || "all"} stores.
+          This product seems unique across all categories.
         </div>
         <button class="ss-empty-btn" id="ss-retry">${T("scanAgain")}</button>
       </div>
@@ -1119,19 +1360,19 @@
     const minPrice = Math.min(...items.map(s => s.price).filter(p => p > 0));
     const currentPrice = currentProduct?.price || 0;
 
-    list.innerHTML = items.slice(0, 25).map((s, i) => {
+    list.innerHTML = items.slice(0, 30).map((s, i) => {
       const rank = i + 1;
       const isCheap = s.price === minPrice && s.price > 0;
       const cardClass = rank === 1 ? "ss-best" : (isCheap ? "ss-cheap" : "");
       const rankClass = rank <= 3 ? `ss-r${rank}` : "";
 
-      // بادج ذكي
-      let badge = "";
       const conf = s._confidence || s.similarity || 0;
-      if (s._hashMatch) badge = `<span class="ss-badge ss-badge-match">🎯 EXACT 100%</span>`;
+      let badge = "";
+      if (s._hashMatch) badge = `<span class="ss-badge ss-badge-match">🎯 EXACT</span>`;
       else if (conf >= 85) badge = `<span class="ss-badge ss-badge-match" style="background:#ecfdf5;color:#065f46">✓ ${conf}%</span>`;
       else if (conf >= 70) badge = `<span class="ss-badge ss-badge-match" style="background:#dbeafe;color:#1e40af">◐ ${conf}%</span>`;
       else if (conf >= 55) badge = `<span class="ss-badge ss-badge-match" style="background:#fef3c7;color:#92400e">◔ ${conf}%</span>`;
+      else if (conf >= 40) badge = `<span class="ss-badge ss-badge-match" style="background:#f3f4f6;color:#6b7280">○ ${conf}%</span>`;
       else if (activeFilter === "cheap" && rank === 1) badge = `<span class="ss-badge ss-badge-cheap">${T("cheapestTag")}</span>`;
       else if (activeFilter === "discount" && rank === 1) badge = `<span class="ss-badge ss-badge-hot">${T("bestDeal")}</span>`;
       else if (activeFilter === "sold" && rank === 1) badge = `<span class="ss-badge ss-badge-top">${T("mostSoldTag")}</span>`;
@@ -1233,7 +1474,8 @@
   async function run() {
     await sleep(800);
     currentProduct = extractProduct();
-    console.log("[Smart Shopper] v45 COGNITIVE ready");
+    console.log("[Smart Shopper] v46 DEEP ready");
+    console.log("[Smart Shopper] Product:", currentProduct);
     if (!currentProduct.title || currentProduct.title.length < 5) return;
     buildPanel();
     await doScan();
@@ -1248,5 +1490,5 @@
   });
 
   run();
-  console.log("[Smart Shopper] v45 ready.");
+  console.log("[Smart Shopper] v46 ready.");
 })();
