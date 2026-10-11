@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════════════════
-   Smart Shopper — Content Script (v37)
-   Product Query + STRICT keyword + brand + model matching.
+   Smart Shopper — Content Script (v38)
+   Multi-search + smart matching.
    ═══════════════════════════════════════════════════════ */
 
 (function () {
@@ -13,7 +13,7 @@
   const LANG = typeof SS_LANG !== "undefined" ? SS_LANG : "en";
   const IS_RTL = typeof SS_RTL !== "undefined" ? SS_RTL : false;
 
-  console.log(`[Smart Shopper] v37 | Lang: ${LANG}`);
+  console.log(`[Smart Shopper] v38 | Lang: ${LANG}`);
 
   const PANEL_ID = "ss-floating-panel";
   const WORKER_URL = "https://cold-art-c5df.fislilouiza91.workers.dev";
@@ -190,7 +190,7 @@
   }
 
   // ═══════════════════════════════════════════════════════
-  // ⭐ SMART SEARCH via product.query
+  // KEYWORDS
   // ═══════════════════════════════════════════════════════
 
   const STOP_WORDS = new Set([
@@ -201,8 +201,7 @@
     "from","into","only","more","all","any","good","great","item","product","pieces",
     "piece","color","colors","size","sizes","model","series","version",
     "maximum","minimum","medium","direct","power","strong","small","large",
-    "big","cheap","premium","professional","portable","rechargeable","wireless",
-    "usb","led","plastic","metal","rubber","black","white","red","blue","green",
+    "big","cheap","premium","professional","portable","rechargeable",
   ]);
 
   function getKeywords(title) {
@@ -251,24 +250,44 @@
   }
 
   /**
-   * ⭐ بناء كلمة بحث مركزة: brand + 2-3 models + top keywords
+   * ⭐ بناء 3 كلمات بحث مختلفة (للبحث المتعدد)
    */
-  function buildSearchKeyword(title) {
+  function buildSearchQueries(title) {
     const brand = extractBrand(title);
     const models = extractModels(title);
-    const kws = getKeywords(title).slice(0, 4);
+    const kws = getKeywords(title);
 
-    const parts = [];
-    if (brand) parts.push(brand);
-    if (models.length) parts.push(models.slice(0, 2).join(" "));
-    parts.push(...kws);
+    const queries = new Set();
 
-    return [...new Set(parts)].join(" ").trim();
+    // 1) brand + 2 models
+    if (brand && models.length >= 2) {
+      queries.add(`${brand} ${models.slice(0, 2).join(" ")}`);
+    }
+
+    // 2) brand + top keywords (2 words)
+    if (brand && kws.length >= 2) {
+      queries.add(`${brand} ${kws.slice(0, 2).join(" ")}`);
+    }
+
+    // 3) brand + 1 model
+    if (brand && models.length) {
+      queries.add(`${brand} ${models[0]}`);
+    }
+
+    // 4) top 3 keywords
+    if (kws.length >= 3) {
+      queries.add(kws.slice(0, 3).join(" "));
+    }
+
+    // 5) top 2 keywords
+    if (kws.length >= 2) {
+      queries.add(kws.slice(0, 2).join(" "));
+    }
+
+    return Array.from(queries).slice(0, 3); // حد أقصى 3
   }
 
   async function searchProducts(keyword) {
-    console.log(`[Smart Shopper] Search keyword: "${keyword}"`);
-
     const res = await fetch(`${WORKER_URL}/api/search`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -279,55 +298,50 @@
     if (!payload.ok) throw new Error(payload.error || "API error");
 
     const resp = payload.data?.aliexpress_affiliate_product_query_response;
-    const products =
-      resp?.resp_result?.result?.products?.product ||
-      [];
-
-    const list = Array.isArray(products) ? products : [products];
-    console.log(`[Smart Shopper] Search returned: ${list.length}`);
-    return list;
+    const products = resp?.resp_result?.result?.products?.product || [];
+    return Array.isArray(products) ? products : [products];
   }
 
   // ═══════════════════════════════════════════════════════
   // MAP + FILTER
   // ═══════════════════════════════════════════════════════
 
-  function mapAndFilter(p, currentKeywords, currentBrand, currentModels, referencePrice) {
+  function mapAndFilter(p, currentKeywords, currentBrand, currentModels, referencePrice, seenIds) {
     const price = parseFloat(p.target_sale_price || p.sale_price || 0);
     const oldP = parseFloat(p.target_original_price || p.original_price || 0);
     const rating = parseFloat(String(p.evaluate_rate || "0").replace("%", "")) / 20;
     const title = p.product_title || p.product_name || "";
     const id = String(p.product_id || "");
 
-    if (id === currentProduct.id) return null; // نفسه
-    if (!price || !title) return null;
+    if (!id || !price || !title) return null;
+    if (id === currentProduct.id) return null;
+    if (seenIds.has(id)) return null;
 
-    // ⭐ فلتر 1: brand + model
     const cardBrand = extractBrand(title);
     const brandMatch = currentBrand && cardBrand && currentBrand === cardBrand;
     const modelMatches = countModelMatches(title, currentModels);
     const kwMatches = countMatches(title, currentKeywords);
 
-    // ⭐ الشرط: brand match OR 1+ model OR 2+ keywords
-    const passes = brandMatch || modelMatches >= 1 || kwMatches >= 2;
-    if (!passes) {
-      console.log(`[Smart Shopper] ❌ "${title.slice(0, 40)}" (b:${brandMatch} m:${modelMatches} k:${kwMatches})`);
-      return null;
-    }
+    // ⭐ فلتر مرن: brand OR 1 model OR 1 keyword
+    const passes = brandMatch || modelMatches >= 1 || kwMatches >= 1;
+    if (!passes) return null;
 
-    // ⭐ فلتر السعر: 30% - 400%
+    // ⭐ فلتر السعر: 25% - 500%
     if (referencePrice > 0) {
       const ratio = price / referencePrice;
-      if (ratio < 0.3 || ratio > 4.0) {
-        console.log(`[Smart Shopper] ❌ price $${price} (ratio ${ratio.toFixed(2)})`);
-        return null;
-      }
+      if (ratio < 0.25 || ratio > 5.0) return null;
     }
 
     const finalOld = (oldP > price && price > 0) ? oldP : 0;
     const discount = finalOld > 0 ? Math.round((1 - price / finalOld) * 100) : 0;
 
-    console.log(`[Smart Shopper] ✅ "${title.slice(0, 40)}" (b:${brandMatch} m:${modelMatches} k:${kwMatches})`);
+    // ⭐ حساب النقاط
+    const score =
+      (brandMatch ? 40 : 0) +
+      Math.min(modelMatches * 20, 40) +
+      Math.min(kwMatches * 8, 24);
+
+    seenIds.add(id);
 
     return {
       store: p.shop_name || p.store_name || "AliExpress Seller",
@@ -339,7 +353,7 @@
       sold: parseInt(p.lastest_volume || p.volume || 0, 10),
       link: p.promotion_link || p.product_detail_url || "",
       title,
-      similarity: (brandMatch ? 30 : 0) + Math.min(modelMatches * 25, 50) + Math.min(kwMatches * 10, 30),
+      similarity: Math.min(score, 100),
       brandMatch,
       modelMatches,
       kwMatches,
@@ -437,31 +451,47 @@
       const referencePrice = currentProduct.price;
 
       console.log("═══════════════════════════════════════════");
-      console.log("[Smart Shopper] Product:", currentProduct.title);
+      console.log("[Smart Shopper] Product:", currentProduct.title.slice(0, 60));
       console.log("[Smart Shopper] Brand:", currentBrand);
       console.log("[Smart Shopper] Models:", currentModels);
       console.log("[Smart Shopper] Keywords:", currentKeywords.slice(0, 6));
       console.log("═══════════════════════════════════════════");
 
-      // بناء كلمة البحث
-      const searchKeyword = buildSearchKeyword(currentProduct.title);
-      if (!searchKeyword) {
+      // ⭐ بناء 3 كلمات بحث
+      const queries = buildSearchQueries(currentProduct.title);
+      console.log("[Smart Shopper] Search queries:", queries);
+
+      if (!queries.length) {
         sellers = [];
         renderEmpty();
         return;
       }
 
-      // بحث
-      const raw = await searchProducts(searchKeyword);
+      // ⭐ 3 عمليات بحث متوازية
+      const seenIds = new Set();
+      const allResults = [];
 
-      // تصفية
-      const filtered = raw
-        .map(p => mapAndFilter(p, currentKeywords, currentBrand, currentModels, referencePrice))
-        .filter(Boolean);
+      for (const q of queries) {
+        try {
+          console.log(`[Smart Shopper] 🔎 Searching: "${q}"`);
+          const raw = await searchProducts(q);
+          console.log(`[Smart Shopper]   → ${raw.length} results`);
 
-      console.log(`[Smart Shopper] ✅ Final: ${filtered.length}`);
+          for (const p of raw) {
+            const mapped = mapAndFilter(p, currentKeywords, currentBrand, currentModels, referencePrice, seenIds);
+            if (mapped) {
+              console.log(`[Smart Shopper]   ✅ "${mapped.title.slice(0, 40)}" (score: ${mapped.similarity})`);
+              allResults.push(mapped);
+            }
+          }
+        } catch (e) {
+          console.warn(`[Smart Shopper] Query failed: "${q}"`, e.message);
+        }
+      }
 
-      sellers = rankProducts(filtered);
+      console.log(`[Smart Shopper] ✅ Total: ${allResults.length}`);
+
+      sellers = rankProducts(allResults);
       updateSourceLabel(sellers.length > 0 ? "smart" : "none");
       renderList();
     } catch (e) {
@@ -522,9 +552,9 @@
     list.innerHTML = `
       <div class="ss-empty">
         <div class="ss-empty-icon">🎯</div>
-        <div class="ss-empty-title">No same product found</div>
+        <div class="ss-empty-title">No similar products found</div>
         <div class="ss-empty-sub">
-          AliExpress doesn't have this product from other sellers right now.
+          AliExpress doesn't list this product from other sellers right now.
         </div>
         <button class="ss-empty-btn" id="ss-retry">${T("scanAgain")}</button>
       </div>
@@ -657,7 +687,7 @@
   async function run() {
     await sleep(800);
     currentProduct = extractProduct();
-    console.log("[Smart Shopper] v37 ready");
+    console.log("[Smart Shopper] v38 ready");
     if (!currentProduct.title || currentProduct.title.length < 5) return;
     buildPanel();
     await doScan();
@@ -672,5 +702,5 @@
   });
 
   run();
-  console.log("[Smart Shopper] v37 ready.");
+  console.log("[Smart Shopper] v38 ready.");
 })();
