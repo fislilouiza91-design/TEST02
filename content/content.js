@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════════════════
-   Smart Shopper — Content Script (v40)
-   Uses /api/find-same endpoint (multi-search).
+   Smart Shopper — Content Script (v42)
+   DEEP SEARCH via /api/deep-search.
    ═══════════════════════════════════════════════════════ */
 
 (function () {
@@ -13,7 +13,7 @@
   const LANG = typeof SS_LANG !== "undefined" ? SS_LANG : "en";
   const IS_RTL = typeof SS_RTL !== "undefined" ? SS_RTL : false;
 
-  console.log(`[Smart Shopper] v40 | Lang: ${LANG}`);
+  console.log(`[Smart Shopper] v42 DEEP-SEARCH | Lang: ${LANG}`);
 
   const PANEL_ID = "ss-floating-panel";
   const WORKER_URL = "https://cold-art-c5df.fislilouiza91.workers.dev";
@@ -81,6 +81,21 @@
       if (save > 0 && save < price) return Math.round((price - save) * 100) / 100;
     }
     return price;
+  }
+
+  // ═══════════════════════════════════════════════════════
+  // IMAGE HASH
+  // ═══════════════════════════════════════════════════════
+
+  function extractImageHash(url) {
+    if (!url) return "";
+    try {
+      const m = url.match(/\/kf\/([SH][A-Za-z0-9]+)\./);
+      if (m) return m[1].toUpperCase();
+      const m2 = url.match(/\/([A-Za-z0-9]{20,})\./);
+      if (m2) return m2[1].toUpperCase();
+      return "";
+    } catch (_) { return ""; }
   }
 
   // ═══════════════════════════════════════════════════════
@@ -194,10 +209,12 @@
   }
 
   function extractProduct() {
+    const img = getImage();
     return {
       id: getProductId(),
       title: getTitle(),
-      image: getImage(),
+      image: img,
+      imageHash: extractImageHash(img),
       price: getPrice(),
       currency: detectCurrency(),
       sold: getSold(),
@@ -208,7 +225,7 @@
   }
 
   // ═══════════════════════════════════════════════════════
-  // KEYWORDS & MATCHING
+  // KEYWORDS
   // ═══════════════════════════════════════════════════════
 
   const STOP_WORDS = new Set([
@@ -268,39 +285,59 @@
   }
 
   // ═══════════════════════════════════════════════════════
-  // BUILD SEARCH QUERIES
+  // ⭐ BUILD STRATEGIES — 6 استراتيجيات
   // ═══════════════════════════════════════════════════════
 
-  function buildSearchQueries(title) {
+  function buildStrategies(title) {
     const brand = extractBrand(title);
     const primaryModel = getPrimaryModel(title);
+    const allModels = extractModels(title);
     const kws = getKeywords(title);
-    const queries = new Set();
 
-    // 1) brand + primary model (الأولوية)
-    if (brand && primaryModel) queries.add(`${brand} ${primaryModel}`);
+    const strategies = [];
 
-    // 2) primary model alone
-    if (primaryModel) queries.add(primaryModel);
+    // 1. Brand + Primary Model (الأدق)
+    if (brand && primaryModel) {
+      strategies.push({ name: "brand+model", keywords: `${brand} ${primaryModel}` });
+    }
 
-    // 3) brand + first 2 keywords
-    if (brand && kws.length >= 2) queries.add(`${brand} ${kws[0]} ${kws[1]}`);
+    // 2. Primary Model فقط
+    if (primaryModel) {
+      strategies.push({ name: "model-only", keywords: primaryModel });
+    }
 
-    // 4) brand + first keyword
-    if (brand && kws.length >= 1) queries.add(`${brand} ${kws[0]}`);
+    // 3. Brand + Top 2 Keywords
+    if (brand && kws.length >= 2) {
+      strategies.push({ name: "brand+kw", keywords: `${brand} ${kws[0]} ${kws[1]}` });
+    }
 
-    return Array.from(queries).slice(0, 4);
+    // 4. Brand + Top Keyword
+    if (brand && kws.length >= 1) {
+      strategies.push({ name: "brand+kw1", keywords: `${brand} ${kws[0]}` });
+    }
+
+    // 5. All models combined
+    if (allModels.length >= 2) {
+      strategies.push({ name: "all-models", keywords: allModels.slice(0, 3).join(" ") });
+    }
+
+    // 6. Top 3 keywords only
+    if (kws.length >= 3) {
+      strategies.push({ name: "kw-only", keywords: kws.slice(0, 3).join(" ") });
+    }
+
+    return strategies.slice(0, 6);
   }
 
-  // ═══════════════════════════════════════════════════════
-  // FETCH FROM WORKER
-  // ═══════════════════════════════════════════════════════
-
-  async function fetchFindSame(queries) {
-    const res = await fetch(`${WORKER_URL}/api/find-same`, {
+  async function fetchDeepSearch(strategies) {
+    const res = await fetch(`${WORKER_URL}/api/deep-search`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ keywords: queries, pageSize: 50 }),
+      body: JSON.stringify({
+        strategies,
+        pagesPerQuery: 3, // 3 صفحات
+        pageSize: 50,     // 50 منتج لكل صفحة
+      }),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const payload = await res.json();
@@ -309,76 +346,68 @@
   }
 
   // ═══════════════════════════════════════════════════════
-  // FILTER & MAP
+  // FILTER
   // ═══════════════════════════════════════════════════════
 
-  function mapAndFilter(p, ctx, seenIds, seenStores) {
+  function mapAndFilter(p, ctx, seenIds, seenStores, seenHashes) {
     const price = parseFloat(p.target_sale_price || p.sale_price || 0);
     const oldP = parseFloat(p.target_original_price || p.original_price || 0);
     const rating = parseFloat(String(p.evaluate_rate || "0").replace("%", "")) / 20;
     const title = p.product_title || p.product_name || "";
     const id = String(p.product_id || "");
     const store = (p.shop_name || p.store_name || "").trim();
+    const img = p.product_main_image_url || "";
+    const imageHash = extractImageHash(img);
 
     if (!id || !price || !title) return null;
     if (id === ctx.productId) return null;
     if (seenIds.has(id)) return null;
 
-    // ⭐ استبعاد المتجر الأصلي
-    if (store && ctx.originalStore && store.toLowerCase() === ctx.originalStore.toLowerCase()) {
-      console.log(`[Smart Shopper] ❌ Same store as original: "${store}"`);
-      return null;
-    }
+    // ⭐ الصورة = نفس المنتج 100%
+    const hashMatch = ctx.imageHash && imageHash && ctx.imageHash === imageHash;
 
-    // ⭐ الموديل الأساسي إلزامي
+    // ⭐ brand + model إلزامي
     const titleUpper = title.toUpperCase();
     const hasPrimaryModel = ctx.primaryModel && titleUpper.includes(ctx.primaryModel);
-
-    // ⭐ أو ماركة + 1 model
     const cardBrand = extractBrand(title);
     const brandMatch = ctx.brand && cardBrand && ctx.brand === cardBrand;
-    const cardModels = extractModels(title);
-    const modelMatch = cardModels.some(m => ctx.models.includes(m));
 
-    // القبول: (primary model) OR (brand AND model)
-    const passes = hasPrimaryModel || (brandMatch && modelMatch);
-    if (!passes) {
-      console.log(`[Smart Shopper] ❌ No strict match: "${title.slice(0, 40)}"`);
-      return null;
-    }
+    const passesHash = hashMatch;
+    const passesBrandModel = brandMatch && hasPrimaryModel;
 
-    // ⭐ السعر 20% - 500%
+    if (!passesHash && !passesBrandModel) return null;
+
+    // ⭐ استبعاد المتجر الأصلي
+    if (store && ctx.originalStore && store.toLowerCase() === ctx.originalStore.toLowerCase()) return null;
+
+    // ⭐ السعر 20%-500%
     if (ctx.referencePrice > 0) {
       const ratio = price / ctx.referencePrice;
-      if (ratio < 0.2 || ratio > 5.0) {
-        console.log(`[Smart Shopper] ❌ Price out: $${price}`);
-        return null;
-      }
+      if (ratio < 0.2 || ratio > 5.0) return null;
     }
 
-    // ⭐ منع تكرار المتاجر
-    if (store && seenStores.has(store.toLowerCase())) {
-      console.log(`[Smart Shopper] ❌ Duplicate store: "${store}"`);
-      return null;
-    }
+    // ⭐ منع التكرار
+    if (store && seenStores.has(store.toLowerCase())) return null;
+    if (imageHash && seenHashes.has(imageHash) && !hashMatch) return null;
+
     if (store) seenStores.add(store.toLowerCase());
+    if (imageHash) seenHashes.add(imageHash);
 
     const finalOld = (oldP > price && price > 0) ? oldP : 0;
     const discount = finalOld > 0 ? Math.round((1 - price / finalOld) * 100) : 0;
     const kwMatches = countKeywords(title, ctx.keywords);
 
     const score =
-      (hasPrimaryModel ? 50 : 0) +
+      (hashMatch ? 100 : 0) +
       (brandMatch ? 30 : 0) +
-      (modelMatch ? 15 : 0) +
-      Math.min(kwMatches * 5, 20);
+      (hasPrimaryModel ? 40 : 0) +
+      Math.min(kwMatches * 3, 15);
 
     seenIds.add(id);
-    console.log(`[Smart Shopper] ✅ "${title.slice(0, 45)}" (${store}) score:${score}`);
 
     return {
       store: store || "AliExpress Seller",
-      img: p.product_main_image_url || "",
+      img,
       price,
       oldPrice: finalOld,
       discount,
@@ -387,18 +416,17 @@
       link: p.promotion_link || p.product_detail_url || "",
       title,
       similarity: Math.min(score, 100),
-      hasPrimaryModel,
-      brandMatch,
+      isHashMatch: hashMatch,
+      isBrandModelMatch: passesBrandModel,
     };
   }
 
   function rankProducts(products) {
     return products.map(p => {
       let rank = p.similarity * 0.8;
+      if (p.isHashMatch) rank += 50;
       if (p.rating >= 4.5) rank += 5;
-      else if (p.rating >= 4) rank += 3;
-      if (p.sold >= 500) rank += 5;
-      else if (p.sold >= 100) rank += 3;
+      if (p.sold >= 100) rank += 3;
       return { ...p, _rank: rank };
     }).sort((a, b) => {
       if (Math.abs(b._rank - a._rank) > 2) return b._rank - a._rank;
@@ -482,27 +510,31 @@
       const keywords = getKeywords(currentProduct.title);
       const referencePrice = currentProduct.price;
       const originalStore = currentProduct.store || "";
+      const imageHash = currentProduct.imageHash || "";
 
       console.log("═══════════════════════════════════════════");
+      console.log("[Smart Shopper] v42 DEEP SEARCH");
       console.log("[Smart Shopper] Product:", currentProduct.title.slice(0, 60));
       console.log("[Smart Shopper] Brand:", brand);
       console.log("[Smart Shopper] Primary Model:", primaryModel);
-      console.log("[Smart Shopper] All Models:", models);
-      console.log("[Smart Shopper] Original Store:", originalStore);
+      console.log("[Smart Shopper] Image Hash:", imageHash || "N/A");
+      console.log("[Smart Shopper] Original Store:", originalStore || "N/A");
       console.log("═══════════════════════════════════════════");
 
-      const queries = buildSearchQueries(currentProduct.title);
-      console.log("[Smart Shopper] Queries:", queries);
+      const strategies = buildStrategies(currentProduct.title);
+      console.log("[Smart Shopper] Strategies:");
+      strategies.forEach(s => console.log(`  → ${s.name}: "${s.keywords}"`));
 
-      if (!queries.length) {
+      if (!strategies.length) {
         sellers = [];
         renderEmpty();
         return;
       }
 
-      const data = await fetchFindSame(queries);
+      const data = await fetchDeepSearch(strategies);
       const raw = data?.products || [];
-      console.log(`[Smart Shopper] Worker returned: ${raw.length} unique`);
+      console.log(`[Smart Shopper] Deep search returned: ${raw.length} unique`);
+      console.log("[Smart Shopper] Stats:", data?.stats);
 
       const ctx = {
         productId: currentProduct.id,
@@ -512,18 +544,20 @@
         keywords,
         referencePrice,
         originalStore,
+        imageHash,
       };
 
       const seenIds = new Set();
       const seenStores = new Set();
+      const seenHashes = new Set();
       const filtered = [];
 
       for (const p of raw) {
-        const m = mapAndFilter(p, ctx, seenIds, seenStores);
+        const m = mapAndFilter(p, ctx, seenIds, seenStores, seenHashes);
         if (m) filtered.push(m);
       }
 
-      console.log(`[Smart Shopper] ✅ Final: ${filtered.length}`);
+      console.log(`[Smart Shopper] ✅ FINAL: ${filtered.length}`);
 
       sellers = rankProducts(filtered);
       updateSourceLabel(sellers.length > 0 ? "smart" : "none");
@@ -569,7 +603,7 @@
   function renderLoading() {
     const list = document.getElementById("ss-list");
     if (!list) return;
-    list.innerHTML = Array.from({ length: 3 }).map(() => `
+    list.innerHTML = Array.from({ length: 4 }).map(() => `
       <div class="ss-skeleton">
         <div class="ss-sk ss-sk-thumb"></div>
         <div class="ss-sk-lines">
@@ -613,14 +647,15 @@
     const minPrice = Math.min(...items.map(s => s.price).filter(p => p > 0));
     const currentPrice = currentProduct?.price || 0;
 
-    list.innerHTML = items.slice(0, 15).map((s, i) => {
+    list.innerHTML = items.slice(0, 20).map((s, i) => {
       const rank = i + 1;
       const isCheap = s.price === minPrice && s.price > 0;
       const cardClass = rank === 1 ? "ss-best" : (isCheap ? "ss-cheap" : "");
       const rankClass = rank <= 3 ? `ss-r${rank}` : "";
 
       let badge = "";
-      if (activeFilter === "cheap" && rank === 1) badge = `<span class="ss-badge ss-badge-cheap">${T("cheapestTag")}</span>`;
+      if (s.isHashMatch) badge = `<span class="ss-badge ss-badge-match">🎯 EXACT</span>`;
+      else if (activeFilter === "cheap" && rank === 1) badge = `<span class="ss-badge ss-badge-cheap">${T("cheapestTag")}</span>`;
       else if (activeFilter === "discount" && rank === 1) badge = `<span class="ss-badge ss-badge-hot">${T("bestDeal")}</span>`;
       else if (activeFilter === "sold" && rank === 1) badge = `<span class="ss-badge ss-badge-top">${T("mostSoldTag")}</span>`;
       else if (activeFilter === "best" && rank === 1) badge = `<span class="ss-badge ss-badge-best">${T("bestValueTag")}</span>`;
@@ -721,8 +756,8 @@
   async function run() {
     await sleep(800);
     currentProduct = extractProduct();
-    console.log("[Smart Shopper] v40 ready");
-    console.log("[Smart Shopper] Product:", currentProduct);
+    console.log("[Smart Shopper] v42 ready");
+    console.log("[Smart Shopper] Image Hash:", currentProduct.imageHash);
     if (!currentProduct.title || currentProduct.title.length < 5) return;
     buildPanel();
     await doScan();
@@ -737,5 +772,5 @@
   });
 
   run();
-  console.log("[Smart Shopper] v40 ready.");
+  console.log("[Smart Shopper] v42 ready.");
 })();
