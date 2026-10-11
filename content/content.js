@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════════════════
-   Smart Shopper — Content Script (v26.6)
-   Replace similarity badge with old crossed-out price.
+   Smart Shopper — Content Script (v26.7)
+   Replace "vs" comparison with competitor's own old price.
    ═══════════════════════════════════════════════════════ */
 
 (function () {
@@ -13,7 +13,7 @@
   const LANG = typeof SS_LANG !== "undefined" ? SS_LANG : "en";
   const IS_RTL = typeof SS_RTL !== "undefined" ? SS_RTL : false;
 
-  console.log(`[Smart Shopper] v26.6 | Lang: ${LANG}`);
+  console.log(`[Smart Shopper] v26.7 | Lang: ${LANG}`);
 
   const PANEL_ID = "ss-floating-panel";
   const WORKER_URL = "https://cold-art-c5df.fislilouiza91.workers.dev";
@@ -23,10 +23,6 @@
   let activeFilter = "cheap";
   let minimized = false;
   let isScanning = false;
-
-  // ═══════════════════════════════════════════════════════
-  // HELPERS
-  // ═══════════════════════════════════════════════════════
 
   const sleep = (ms) => new Promise(r => setTimeout(r, ms));
   const esc = (s) => { const d = document.createElement("div"); d.textContent = s; return d.innerHTML; };
@@ -80,22 +76,15 @@
   function applyWelcomeDeal(price, rootEl) {
     if (!price || !rootEl) return price;
     const txt = rootEl.innerText || "";
-
     let m = txt.match(/new\s+shoppers?\s+save\s+\$?\s*([\d.,]+)/i);
     if (m) {
       const save = parseFloat(m[1].replace(",", "."));
-      if (save > 0 && save < price) {
-        console.log(`[Smart Shopper] Welcome deal: $${price} - $${save} = $${price - save}`);
-        return Math.round((price - save) * 100) / 100;
-      }
+      if (save > 0 && save < price) return Math.round((price - save) * 100) / 100;
     }
-
     m = txt.match(/\bsave\s+\$?\s*([\d.,]+)/i);
     if (m) {
       const save = parseFloat(m[1].replace(",", "."));
-      if (save > 0 && save < price) {
-        return Math.round((price - save) * 100) / 100;
-      }
+      if (save > 0 && save < price) return Math.round((price - save) * 100) / 100;
     }
     return price;
   }
@@ -160,7 +149,6 @@
       const v = parseFloat(meta.getAttribute("content"));
       if (v > 0.5) return v;
     }
-
     const priceEls = document.querySelectorAll("[class*='price'], [class*='Price']");
     const candidates = [];
     for (const el of priceEls) {
@@ -176,7 +164,6 @@
       const fontSize = parseFloat(window.getComputedStyle(el).fontSize) || 12;
       candidates.push({ value: nums[0].value, isCurrent, fontSize, el });
     }
-
     if (candidates.length) {
       candidates.sort((a, b) => {
         if (a.isCurrent !== b.isCurrent) return a.isCurrent ? -1 : 1;
@@ -187,7 +174,6 @@
       basePrice = applyWelcomeDeal(basePrice, container);
       return basePrice;
     }
-
     const h1 = document.querySelector("h1[data-pl='product-title'], .product-title-text, h1.product-title");
     if (h1) {
       let node = h1;
@@ -239,8 +225,6 @@
   // ═══════════════════════════════════════════════════════
 
   async function fetchSmartMatch(product) {
-    console.log(`[Smart Shopper] Smart Match for: ${product.id}`);
-
     const bodies = [];
     if (product.id) bodies.push({ productId: product.id });
     if (product.image) bodies.push({ imageUrl: product.image });
@@ -249,14 +233,11 @@
     for (const body of bodies) {
       try {
         const key = Object.keys(body)[0];
-        console.log(`[Smart Shopper] Trying: ${key}`);
-
         const res = await fetch(`${WORKER_URL}/api/smart-match`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
         });
-
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const payload = await res.json();
         if (!payload.ok) throw new Error(payload.error || "API error");
@@ -267,18 +248,15 @@
 
         const products =
           resp?.resp_result?.result?.products?.product ||
-          resp?.resp_result?.result?.product ||
-          [];
+          resp?.resp_result?.result?.product || [];
 
         const list = Array.isArray(products) ? products : [products];
         console.log(`[Smart Shopper] Smart Match (${key}) → ${list.length}`);
-
         if (list.length > 0) return { ok: true, method: key, products: list };
       } catch (e) {
         console.warn(`[Smart Shopper] ${Object.keys(body)[0]} failed:`, e.message);
       }
     }
-
     return { ok: false, method: null, products: [] };
   }
 
@@ -304,7 +282,7 @@
   }
 
   // ═══════════════════════════════════════════════════════
-  // IMAGE EXTRACTION
+  // IMAGE
   // ═══════════════════════════════════════════════════════
 
   const BAD_IMG_PATTERNS = [
@@ -317,9 +295,7 @@
   function isBadImage(src) {
     if (!src || !src.startsWith("http")) return true;
     const low = src.toLowerCase();
-    for (const p of BAD_IMG_PATTERNS) {
-      if (low.includes(p)) return true;
-    }
+    for (const p of BAD_IMG_PATTERNS) if (low.includes(p)) return true;
     if (low.includes(".svg") && low.length < 300) return true;
     return false;
   }
@@ -330,25 +306,18 @@
     const srcset = img.getAttribute("srcset");
     if (srcset) {
       const entries = srcset.split(",").map(s => s.trim().split(" ")[0]);
-      for (let i = entries.length - 1; i >= 0; i--) {
-        if (!isBadImage(entries[i])) return entries[i];
-      }
+      for (let i = entries.length - 1; i >= 0; i--) if (!isBadImage(entries[i])) return entries[i];
     }
     const dataSrc = img.getAttribute("data-src");
-    if (dataSrc && !isBadImage(dataSrc)) {
-      return dataSrc.startsWith("//") ? "https:" + dataSrc : dataSrc;
-    }
+    if (dataSrc && !isBadImage(dataSrc)) return dataSrc.startsWith("//") ? "https:" + dataSrc : dataSrc;
     const lazySrc = img.getAttribute("data-lazy-src") || img.getAttribute("lazy-src");
-    if (lazySrc && !isBadImage(lazySrc)) {
-      return lazySrc.startsWith("//") ? "https:" + lazySrc : lazySrc;
-    }
+    if (lazySrc && !isBadImage(lazySrc)) return lazySrc.startsWith("//") ? "https:" + lazySrc : lazySrc;
     if (img.src && !isBadImage(img.src)) return img.src;
     return "";
   }
 
   function extractRealImage(card) {
-    const imgs = card.querySelectorAll("img");
-    for (const img of imgs) {
+    for (const img of card.querySelectorAll("img")) {
       const w = img.naturalWidth || img.width || 0;
       const h = img.naturalHeight || img.height || 0;
       if (w > 0 && w < 80) continue;
@@ -372,17 +341,14 @@
       const cls = (el.className || "").toString().toLowerCase();
       const style = (el.getAttribute("style") || "").toLowerCase();
       const elTxt = (el.innerText || "").trim();
-      if (!elTxt) continue;
-      if (isExcludedContext(elTxt)) continue;
+      if (!elTxt || isExcludedContext(elTxt)) continue;
 
       const nums = extractNumbers(elTxt);
       if (!nums.length) continue;
-
       const v = nums[0].value;
       if (v < 0.5) continue;
 
       const isOld = /(old|origin|del|through|cross|before|strike)/i.test(cls) || /line-through/.test(style);
-
       if (isOld) old = Math.max(old, v);
       else current = Math.max(current, v);
     }
@@ -402,9 +368,7 @@
 
     if (!current) {
       const decimalNums = txt.match(/([\d]+[.,][\d]{2})/g) || [];
-      const parsed = decimalNums
-        .map(n => parseFloat(n.replace(",", ".")))
-        .filter(v => v >= 0.5);
+      const parsed = decimalNums.map(n => parseFloat(n.replace(",", "."))).filter(v => v >= 0.5);
       if (parsed.length) {
         parsed.sort((a, b) => b - a);
         current = parsed[0];
@@ -502,16 +466,11 @@
       const imgs = Array.from(document.querySelectorAll("img"));
       const pending = imgs.filter(img => !img.complete || img.naturalWidth === 0);
       if (pending.length === 0) return resolve();
-
       let loaded = 0;
       const total = pending.length;
       const timer = setTimeout(resolve, 4000);
-
       pending.forEach(img => {
-        const done = () => {
-          loaded++;
-          if (loaded >= total) { clearTimeout(timer); resolve(); }
-        };
+        const done = () => { loaded++; if (loaded >= total) { clearTimeout(timer); resolve(); } };
         img.addEventListener("load", done, { once: true });
         img.addEventListener("error", done, { once: true });
       });
@@ -530,25 +489,18 @@
       try {
         const href = link.href.split("?")[0];
         if (!href || href === currentUrl || seen.has(href)) continue;
-
         const card = findCardContainer(link);
         if (!card) continue;
-
         const img = extractRealImage(card);
         if (!img) continue;
-
         const priceInfo = parseCardPrice(card);
         if (!priceInfo.price) continue;
-
         const title = parseCardTitle(card);
         if (!title || title.length < 8) continue;
-
         const kwMatches = countKeywords(title, currentKeywords);
         if (kwMatches < 2) continue;
-
         const sold = parseCardSold(card);
         const rating = parseCardRating(card);
-
         seen.add(href);
         results.push({
           store: title.slice(0, 70).trim(),
@@ -564,14 +516,9 @@
         });
       } catch (_) {}
     }
-
     console.log(`[Smart Shopper] Page matched: ${results.length}`);
     return results;
   }
-
-  // ═══════════════════════════════════════════════════════
-  // RANK
-  // ═══════════════════════════════════════════════════════
 
   function rankProducts(products) {
     return products.map(p => {
@@ -609,7 +556,7 @@
           </div>
         </div>
         <div class="ss-header-actions">
-          <button class="ss-btn-icon" data-action="refresh" title="Refresh">↻</button>
+          <button class="ss-btn-icon" data-action="refresh">↻</button>
           <button class="ss-btn-icon" data-action="minimize">−</button>
           <button class="ss-btn-icon" data-action="close">×</button>
         </div>
@@ -659,23 +606,17 @@
     renderLoading();
 
     try {
-      console.log("[Smart Shopper] ═══ STEP 1: Smart Match ═══");
       const smart = await fetchSmartMatch(currentProduct);
-
       if (smart.ok && smart.products.length > 0) {
         sellers = rankProducts(smart.products.map(mapSmartMatchProduct));
-        console.log(`[Smart Shopper] ✅ Smart Match: ${sellers.length}`);
         updateSourceLabel("smart");
         renderList();
         return;
       }
-
-      console.log("[Smart Shopper] ═══ STEP 2: Page fallback ═══");
       const currentKeywords = getKeywords(currentProduct.title);
       await autoScroll();
       const candidates = scrapePage(currentKeywords);
       sellers = rankProducts(candidates);
-      console.log(`[Smart Shopper] Page fallback: ${sellers.length}`);
       updateSourceLabel("page");
       renderList();
     } catch (e) {
@@ -690,11 +631,7 @@
   function updateSourceLabel(mode) {
     const el = document.getElementById("ss-source");
     if (!el) return;
-    el.textContent = mode === "smart"
-      ? T("sameProduct")
-      : mode === "page"
-      ? T("similarMatched")
-      : T("scanning");
+    el.textContent = mode === "smart" ? T("sameProduct") : mode === "page" ? T("similarMatched") : T("scanning");
   }
 
   function renderCurrentProduct() {
@@ -702,7 +639,6 @@
     const img = document.getElementById("ss-cur-img");
     const title = document.getElementById("ss-cur-title");
     const meta = document.getElementById("ss-cur-meta");
-
     if (img) {
       if (currentProduct.image) {
         img.src = currentProduct.image;
@@ -762,7 +698,6 @@
 
     const items = sortSellers(sellers, activeFilter);
     const minPrice = Math.min(...items.map(s => s.price).filter(p => p > 0));
-    const currentPrice = currentProduct?.price;
 
     list.innerHTML = items.slice(0, 12).map((s, i) => {
       const rank = i + 1;
@@ -777,8 +712,8 @@
       else if (activeFilter === "best" && rank === 1) tag = `<span class="ss-tag ss-best">${T("bestValueTag")}</span>`;
       else if (isCheap) tag = `<span class="ss-tag ss-cheap">${T("bestPrice")}</span>`;
 
-      // ⭐ هنا التغيير: بدل نسبة التشابه → السعر القديم مشطوب
-      const oldPriceInMeta = s.oldPrice > 0
+      // ⭐ السعر القديم للمنتج نفسه (مشطوب)
+      const oldPriceHtml = s.oldPrice > 0
         ? `<span class="ss-old-price">${formatPrice(s.oldPrice, currentProduct.currency)}</span>`
         : "";
 
@@ -786,15 +721,6 @@
       const ratingHtml = s.rating > 0 ? `<span class="ss-rating">★ ${s.rating.toFixed(1)}</span>` : "";
       const soldHtml = s.sold > 0 ? `<span class="ss-sold">${fmt(s.sold)} ${T("sold")}</span>` : "";
       const metaItems = [ratingHtml, soldHtml].filter(Boolean).join('<span class="ss-sep">·</span>');
-
-      let priceExtra = "";
-      if (currentPrice && s.price < currentPrice) {
-        const save = Math.round((1 - s.price / currentPrice) * 100);
-        priceExtra = `<div class="ss-vs" style="color:#059669">${T("vs")} ${formatPrice(currentPrice, currentProduct.currency)} <b>−${save}%</b></div>`;
-      } else if (currentPrice && s.price > currentPrice) {
-        const more = Math.round((s.price / currentPrice - 1) * 100);
-        priceExtra = `<div class="ss-vs" style="color:#ea580c">+${more}% ${T("vs")} ${formatPrice(currentPrice, currentProduct.currency)}</div>`;
-      }
 
       const imgHtml = s.img
         ? `<img src="${s.img}" loading="lazy" onerror="this.style.display='none';this.parentElement.innerHTML='🖼️'">`
@@ -807,14 +733,14 @@
           <div class="ss-thumb">${imgHtml}</div>
           <div class="ss-info">
             <div class="ss-store">${esc(s.store)}</div>
-            <div class="ss-meta">${oldPriceInMeta}${metaItems}</div>
+            <div class="ss-meta">${metaItems}</div>
           </div>
           <div class="ss-price-col">
             <div class="ss-price-line">
               <span class="ss-price-now">${formatPrice(s.price, currentProduct.currency)}</span>
               ${discountBadge}
             </div>
-            ${priceExtra}
+            ${oldPriceHtml ? `<div class="ss-old-line">${oldPriceHtml}</div>` : ""}
           </div>
         </div>
       `;
@@ -827,10 +753,6 @@
       });
     });
   }
-
-  // ═══════════════════════════════════════════════════════
-  // DRAG
-  // ═══════════════════════════════════════════════════════
 
   function makeDraggable(panel) {
     const header = panel.querySelector(".ss-header");
@@ -871,16 +793,11 @@
     } catch (_) {}
   }
 
-  // ═══════════════════════════════════════════════════════
-  // MAIN
-  // ═══════════════════════════════════════════════════════
-
   async function run() {
     await sleep(1500);
     currentProduct = extractProduct();
-    console.log("[Smart Shopper] v26.6 ready");
+    console.log("[Smart Shopper] v26.7 — Own old price");
     console.log("[Smart Shopper] Product:", currentProduct);
-
     if (!currentProduct.title || currentProduct.title.length < 5) return;
     buildPanel();
     await doScan();
@@ -895,4 +812,5 @@
   });
 
   run();
+  console.log("[Smart Shopper] v26.7 ready.");
 })();
