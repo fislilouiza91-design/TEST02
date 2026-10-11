@@ -1,223 +1,53 @@
-* {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-}
-
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { width: 300px; }
 body {
-  width: 380px;
-  min-height: 400px;
-  max-height: 600px;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  background: #fafafa;
-  color: #09090b;
-  display: flex;
-  flex-direction: column;
-}
-
-/* ─── Header ─── */
-.header {
-  background: #09090b;
-  color: white;
-  padding: 14px 16px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.logo-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.logo {
-  width: 32px;
-  height: 32px;
-  background: #dc2626;
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 800;
-  font-size: 16px;
-}
-
-.title {
-  font-size: 14px;
-  font-weight: 700;
-}
-
-.subtitle {
-  font-size: 10.5px;
-  color: #a1a1aa;
-  margin-top: 2px;
-}
-
-.btn-icon {
-  background: transparent;
-  border: none;
-  color: white;
-  font-size: 18px;
-  cursor: pointer;
-  padding: 4px 8px;
-  border-radius: 6px;
-  transition: background 0.2s;
-}
-
-.btn-icon:hover { background: rgba(255,255,255,0.1); }
-
-/* ─── Search ─── */
-.search-bar {
-  padding: 10px 12px;
-  background: white;
-  border-bottom: 1px solid #e4e4e7;
-}
-
-.search-bar input {
-  width: 100%;
-  padding: 8px 12px;
-  font-size: 12px;
-  border: 1px solid #e4e4e7;
-  border-radius: 8px;
-  outline: none;
-  font-family: inherit;
-}
-
-.search-bar input:focus {
-  border-color: #dc2626;
-}
-
-/* ─── Stats ─── */
-.stats {
-  padding: 8px 14px;
-  font-size: 11px;
-  color: #71717a;
-  background: white;
-  border-bottom: 1px solid #e4e4e7;
-}
-
-/* ─── Products List ─── */
-.products-list {
-  flex: 1;
-  overflow-y: auto;
-  padding: 8px;
-}
-
-.loading, .empty {
-  padding: 30px 20px;
-  text-align: center;
-  color: #a1a1aa;
-  font-size: 12px;
-}
-
-/* ─── Product Row ─── */
-.product {
-  display: flex;
-  gap: 10px;
-  padding: 8px;
-  background: white;
-  border-radius: 10px;
-  margin-bottom: 6px;
-  cursor: pointer;
-  transition: box-shadow 0.15s, transform 0.15s;
-  border: 1px solid #f4f4f5;
-}
-
-.product:hover {
-  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
-  transform: translateY(-1px);
-}
-
-.product-thumb {
-  width: 60px;
-  height: 60px;
-  border-radius: 8px;
-  overflow: hidden;
-  background: #f4f4f5;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.product-thumb img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.product-info {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-}
-
-.product-title {
-  font-size: 11.5px;
-  font-weight: 600;
-  line-height: 1.35;
-  color: #09090b;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-.product-meta {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 4px;
-  flex-wrap: wrap;
-}
-
-.product-price {
+  font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif;
   font-size: 13px;
-  font-weight: 700;
-  color: #dc2626;
+  color: #09090b;
+  background: #fff;
 }
 
-.product-rating {
-  font-size: 10px;
-  color: #71717a;
+.app { display: flex; flex-direction: column; }
+
+.header {
+  padding: 14px 16px;
+  background: linear-gradient(135deg, #0f172a, #1e293b);
+  color: #fff;
 }
 
-.product-sold {
-  font-size: 10px;
-  color: #71717a;
+.header h1 {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
 }
 
-.product-time {
+.header h1 span {
+  color: rgba(255,255,255,0.5);
+  font-weight: 400;
+}
+
+.info {
+  padding: 20px 16px;
+  text-align: center;
+}
+
+.info p {
+  font-size: 12px;
+  color: #52525b;
+  line-height: 1.5;
+  margin-bottom: 8px;
+}
+
+.info p.small {
+  font-size: 11px;
+  color: #a1a1aa;
+}
+
+.footer {
+  padding: 10px 16px;
   font-size: 9.5px;
   color: #a1a1aa;
-  margin-top: 2px;
-}
-
-/* ─── Footer ─── */
-.footer {
-  padding: 10px 14px;
-  background: white;
-  border-top: 1px solid #e4e4e7;
-  display: flex;
-  justify-content: center;
-}
-
-.btn-clear {
-  padding: 7px 16px;
-  font-size: 11px;
-  font-weight: 600;
-  background: transparent;
-  color: #dc2626;
-  border: 1px solid #fecaca;
-  border-radius: 6px;
-  cursor: pointer;
-  font-family: inherit;
-  transition: background 0.15s;
-}
-
-.btn-clear:hover {
-  background: #fef2f2;
+  text-align: center;
+  border-top: 1px solid #efeff1;
+  background: #fafafa;
 }
