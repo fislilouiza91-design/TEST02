@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════════════════
-   Smart Shopper — Content Script (v26.3)
-   Smart Match + Fixed images (skip logos + slow scroll).
+   Smart Shopper — Content Script (v26.4)
+   Default sort: CHEAPEST FIRST.
    ═══════════════════════════════════════════════════════ */
 
 (function () {
@@ -13,14 +13,14 @@
   const LANG = typeof SS_LANG !== "undefined" ? SS_LANG : "en";
   const IS_RTL = typeof SS_RTL !== "undefined" ? SS_RTL : false;
 
-  console.log(`[Smart Shopper] v26.3 | Lang: ${LANG}`);
+  console.log(`[Smart Shopper] v26.4 | Lang: ${LANG}`);
 
   const PANEL_ID = "ss-floating-panel";
   const WORKER_URL = "https://cold-art-c5df.fislilouiza91.workers.dev";
 
   let currentProduct = null;
   let sellers = [];
-  let activeFilter = "best";
+  let activeFilter = "cheap"; // ⭐ CHEAPEST BY DEFAULT
   let minimized = false;
   let isScanning = false;
 
@@ -273,7 +273,7 @@
   }
 
   // ═══════════════════════════════════════════════════════
-  // IMAGE EXTRACTION — نسخة نهائية
+  // IMAGE EXTRACTION
   // ═══════════════════════════════════════════════════════
 
   const BAD_IMG_PATTERNS = [
@@ -295,11 +295,7 @@
 
   function getImgSrc(img) {
     if (!img) return "";
-
-    // 1) currentSrc
     if (img.currentSrc && !isBadImage(img.currentSrc)) return img.currentSrc;
-
-    // 2) srcset — pick largest
     const srcset = img.getAttribute("srcset");
     if (srcset) {
       const entries = srcset.split(",").map(s => s.trim().split(" ")[0]);
@@ -307,31 +303,21 @@
         if (!isBadImage(entries[i])) return entries[i];
       }
     }
-
-    // 3) data-src
     const dataSrc = img.getAttribute("data-src");
     if (dataSrc && !isBadImage(dataSrc)) {
       return dataSrc.startsWith("//") ? "https:" + dataSrc : dataSrc;
     }
-
-    // 4) lazy-src
     const lazySrc = img.getAttribute("data-lazy-src") || img.getAttribute("lazy-src");
     if (lazySrc && !isBadImage(lazySrc)) {
       return lazySrc.startsWith("//") ? "https:" + lazySrc : lazySrc;
     }
-
-    // 5) src
     if (img.src && !isBadImage(img.src)) return img.src;
-
     return "";
   }
 
-  // ⭐ استبعاد الصور الصغيرة (شعار Choice)
   function extractRealImage(card) {
     const imgs = card.querySelectorAll("img");
-
     for (const img of imgs) {
-      // Skip tiny images (< 80px) = logos/placeholders
       const w = img.naturalWidth || img.width || 0;
       const h = img.naturalHeight || img.height || 0;
       if (w > 0 && w < 80) continue;
@@ -340,8 +326,6 @@
       const src = getImgSrc(img);
       if (src) return src;
     }
-
-    // Fallback: background-image
     const bgEls = card.querySelectorAll("[style*='background-image']");
     for (const el of bgEls) {
       const m = (el.getAttribute("style") || "").match(/url\(["']?([^"')]+)["']?\)/);
@@ -349,7 +333,6 @@
         return m[1].startsWith("//") ? "https:" + m[1] : m[1];
       }
     }
-
     return "";
   }
 
@@ -478,7 +461,6 @@
     return null;
   }
 
-  // ⭐ Scroll بطيء جداً
   async function autoScroll() {
     const originalY = window.scrollY;
     for (let i = 0; i < 12; i++) {
@@ -490,7 +472,6 @@
     await waitForImages();
   }
 
-  // ⭐ انتظار تحميل كل الصور
   function waitForImages() {
     return new Promise((resolve) => {
       const imgs = Array.from(document.querySelectorAll("img"));
@@ -619,8 +600,8 @@
         </div>
       </div>
       <div class="ss-filters" id="ss-filters">
-        <button class="ss-chip ss-active" data-f="best">${T("bestValue")}</button>
-        <button class="ss-chip" data-f="cheap">${T("cheapest")}</button>
+        <button class="ss-chip ss-active" data-f="cheap">${T("cheapest")}</button>
+        <button class="ss-chip" data-f="best">${T("bestValue")}</button>
         <button class="ss-chip" data-f="discount">${T("bestDiscount")}</button>
         <button class="ss-chip" data-f="sold">${T("mostSold")}</button>
       </div>
@@ -881,7 +862,7 @@
     await sleep(1500);
     currentProduct = extractProduct();
     console.log("[Smart Shopper] ════════════════════════════════");
-    console.log("[Smart Shopper] v26.3 — Smart Match Mode");
+    console.log("[Smart Shopper] v26.4 — Cheapest First");
     console.log("[Smart Shopper] Worker:", WORKER_URL);
     console.log("[Smart Shopper] Product:", currentProduct);
     console.log("[Smart Shopper] ════════════════════════════════");
@@ -900,5 +881,5 @@
   });
 
   run();
-  console.log("[Smart Shopper] v26.3 ready.");
+  console.log("[Smart Shopper] v26.4 ready.");
 })();
