@@ -1,501 +1,892 @@
-/* ═══════════════════════════════════════════
-   Smart Shopper — Compact Rich Panel (v28)
-   Same info, ~50% less height.
-   ═══════════════════════════════════════════ */
-
-#ss-floating-panel,
-#ss-floating-panel * {
-  box-sizing: border-box;
-  font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI",
-    "Noto Sans Arabic", "Noto Sans SC", "Helvetica Neue", sans-serif;
-}
-
-#ss-floating-panel {
-  position: fixed;
-  top: 90px;
-  right: 16px;
-  width: 380px;
-  background: #fff;
-  border: 1px solid #e5e7eb;
-  border-radius: 12px;
-  box-shadow: 0 10px 32px rgba(0,0,0,0.13), 0 2px 8px rgba(0,0,0,0.05);
-  z-index: 2147483647;
-  overflow: hidden;
-  font-size: 12px;
-  color: #0a0a0a;
-  animation: ss-slide-in 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-#ss-floating-panel[dir="rtl"] { text-align: right; }
-#ss-floating-panel[dir="rtl"] .ss-header-left { flex-direction: row-reverse; }
-#ss-floating-panel[dir="rtl"] .ss-price-col { text-align: left; }
-
-#ss-floating-panel.ss-minimized { width: 240px; }
-
-@keyframes ss-slide-in {
-  from { opacity: 0; transform: translateX(20px) scale(0.98); }
-  to { opacity: 1; transform: translateX(0) scale(1); }
-}
-
-/* ═══ HEADER ═══ */
-.ss-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 12px;
-  background: linear-gradient(135deg, #0a0a0a 0%, #1e293b 100%);
-  color: #fff;
-  cursor: move;
-  user-select: none;
-}
-
-.ss-header-left { display: flex; align-items: center; gap: 8px; }
-
-.ss-logo {
-  width: 24px; height: 24px;
-  border-radius: 6px;
-  background: linear-gradient(135deg, #ff5722, #ff8a50);
-  display: grid; place-items: center;
-  font-weight: 800; font-size: 12px; color: #fff;
-  flex-shrink: 0;
-}
-
-.ss-title { font-size: 12px; font-weight: 700; line-height: 1.1; }
-.ss-subtitle { font-size: 9px; opacity: 0.7; margin-top: 1px; }
-.ss-header-actions { display: flex; gap: 3px; }
-
-.ss-btn-icon {
-  width: 22px; height: 22px;
-  border-radius: 5px;
-  display: grid; place-items: center;
-  color: rgba(255,255,255,0.75);
-  background: rgba(255,255,255,0.08);
-  cursor: pointer; border: none;
-  font-size: 12px; padding: 0;
-}
-.ss-btn-icon:hover { background: rgba(255,255,255,0.22); color: #fff; }
-.ss-header * { pointer-events: none; }
-.ss-header .ss-btn-icon { pointer-events: auto; }
-
-/* ═══ CURRENT PRODUCT (compact) ═══ */
-.ss-current {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  background: #f8fafc;
-  border-bottom: 1px solid #e2e8f0;
-}
-
-.ss-current-thumb {
-  width: 40px; height: 40px;
-  border-radius: 6px;
-  overflow: hidden;
-  flex-shrink: 0;
-  background: #fff;
-  border: 1px solid #e2e8f0;
-}
-
-.ss-current-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
-
-.ss-current-info { flex: 1; min-width: 0; }
-
-.ss-current-title {
-  font-size: 10.5px; font-weight: 600; line-height: 1.25;
-  color: #0a0a0a;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  margin-bottom: 2px;
-}
-
-.ss-current-meta {
-  display: flex; align-items: center; gap: 5px;
-  font-size: 9.5px; color: #64748b;
-  white-space: nowrap;
-  overflow: hidden;
-}
-
-.ss-current-meta strong { color: #0a0a0a; font-weight: 700; font-size: 11px; }
-
-.ss-meta-pill {
-  display: inline-flex; align-items: center; gap: 2px;
-  padding: 1px 5px;
-  background: #fff;
-  border: 1px solid #e2e8f0;
-  border-radius: 100px;
-  font-size: 9px;
-  font-weight: 500;
-  color: #475569;
-}
-
-.ss-meta-pill.ss-star {
-  background: #fef3c7;
-  border-color: #fcd34d;
-  color: #92400e;
-  font-weight: 600;
-}
-
-/* ═══ FILTERS ═══ */
-.ss-filters {
-  display: flex; gap: 4px;
-  padding: 7px 10px 6px;
-  overflow-x: auto;
-  scrollbar-width: none;
-  background: #fff;
-  border-bottom: 1px solid #f1f5f9;
-}
-
-.ss-filters::-webkit-scrollbar { display: none; }
-
-.ss-chip {
-  flex-shrink: 0;
-  padding: 4px 9px;
-  font-size: 10px;
-  font-weight: 600;
-  color: #64748b;
-  border-radius: 100px;
-  border: 1.5px solid #f1f5f9;
-  background: #fff;
-  cursor: pointer;
-  white-space: nowrap;
-  font-family: inherit;
-}
-
-.ss-chip:hover { background: #f8fafc; color: #0a0a0a; }
-.ss-chip.ss-active {
-  background: #0a0a0a;
-  color: #fff;
-  border-color: #0a0a0a;
-}
-
-/* ═══ LIST ═══ */
-.ss-list {
-  padding: 6px;
-  max-height: 400px;
-  overflow-y: auto;
-  background: #f8fafc;
-}
-
-.ss-list::-webkit-scrollbar { width: 4px; }
-.ss-list::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 2px; }
-
-/* ═══ COMPACT CARD ═══ */
-.ss-card {
-  background: #fff;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  padding: 7px 9px;
-  margin-bottom: 5px;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  animation: ss-card-fade 0.25s ease both;
-}
-
-.ss-card:hover {
-  border-color: #cbd5e1;
-  box-shadow: 0 3px 10px rgba(0,0,0,0.07);
-}
-
-.ss-card.ss-best {
-  border-color: #10b981;
-  background: linear-gradient(180deg, #f0fdf4 0%, #fff 60%);
-}
-
-.ss-card.ss-cheap {
-  border-color: #f97316;
-  background: linear-gradient(180deg, #fff7ed 0%, #fff 60%);
-}
-
-@keyframes ss-card-fade {
-  from { opacity: 0; transform: translateY(4px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-/* ═══ CARD SINGLE ROW ═══ */
-.ss-card-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.ss-rank {
-  width: 20px; height: 20px;
-  border-radius: 6px;
-  display: grid; place-items: center;
-  font-size: 10px; font-weight: 800;
-  background: #f1f5f9; color: #475569;
-  flex-shrink: 0;
-}
-
-.ss-rank.ss-r1 { background: linear-gradient(135deg, #10b981, #059669); color: #fff; }
-.ss-rank.ss-r2 { background: linear-gradient(135deg, #3b82f6, #2563eb); color: #fff; }
-.ss-rank.ss-r3 { background: linear-gradient(135deg, #a855f7, #7c3aed); color: #fff; }
-
-.ss-card-thumb {
-  width: 44px; height: 44px;
-  border-radius: 6px;
-  overflow: hidden;
-  flex-shrink: 0;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 18px;
-  color: #cbd5e1;
-}
-
-.ss-card-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
-
-.ss-card-info {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.ss-card-title {
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 1.25;
-  color: #0a0a0a;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.ss-card-subtitle {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 9.5px;
-  color: #64748b;
-  white-space: nowrap;
-  overflow: hidden;
-}
-
-.ss-card-subtitle .ss-tag-inline {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  font-weight: 600;
-}
-
-.ss-tag-inline.rating { color: #b45309; }
-.ss-tag-inline.sold { color: #1e40af; }
-.ss-tag-inline.same {
-  color: #059669;
-  background: #dcfce7;
-  padding: 0px 4px;
-  border-radius: 3px;
-  font-size: 8.5px;
-}
-
-.ss-card-subtitle .ss-sep {
-  color: #cbd5e1;
-  font-size: 7px;
-}
-
-/* ═══ PRICE COLUMN ═══ */
-.ss-price-col {
-  text-align: right;
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  min-width: 80px;
-}
-
-.ss-price-line {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 4px;
-}
-
-.ss-price-now {
-  font-size: 14px;
-  font-weight: 800;
-  color: #059669;
-  letter-spacing: -0.02em;
-  line-height: 1;
-}
-
-.ss-card.ss-cheap .ss-price-now { color: #ea580c; }
-
-.ss-save-badge {
-  display: inline-flex;
-  padding: 1px 4px;
-  background: #ef4444;
-  color: #fff;
-  font-size: 8.5px;
-  font-weight: 800;
-  border-radius: 3px;
-  line-height: 1.4;
-  direction: ltr;
-}
-
-.ss-price-old {
-  font-size: 9.5px;
-  color: #94a3b8;
-  text-decoration: line-through;
-  font-weight: 500;
-}
-
-.ss-compare-vs {
-  font-size: 9px;
-  font-weight: 800;
-  direction: ltr;
-}
-
-.ss-compare-vs.up { color: #059669; }
-.ss-compare-vs.down { color: #ea580c; }
-.ss-compare-vs.same { color: #64748b; }
-
-/* ═══ BADGE (top-right inline) ═══ */
-.ss-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  padding: 1px 5px;
-  font-size: 8px;
-  font-weight: 800;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
-  border-radius: 3px;
-  margin-left: 3px;
-  vertical-align: middle;
-}
-
-.ss-badge-best  { background: #10b981; color: #fff; }
-.ss-badge-cheap { background: #f97316; color: #fff; }
-.ss-badge-hot   { background: #ef4444; color: #fff; }
-.ss-badge-top   { background: #3b82f6; color: #fff; }
-.ss-badge-match {
-  background: #dbeafe;
-  color: #1e40af;
-  border: 1px solid #93c5fd;
-}
-
-/* ═══ MATCH BAR (thin, inline) ═══ */
-.ss-match-line {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  margin-top: 4px;
-  padding-top: 4px;
-  border-top: 1px dashed #f1f5f9;
-}
-
-.ss-match-track {
-  flex: 1;
-  height: 2.5px;
-  background: #f1f5f9;
-  border-radius: 100px;
-  overflow: hidden;
-}
-
-.ss-match-fill {
-  height: 100%;
-  border-radius: 100px;
-  background: linear-gradient(90deg, #10b981, #059669);
-}
-
-.ss-match-fill.mid { background: linear-gradient(90deg, #f59e0b, #d97706); }
-.ss-match-fill.low { background: linear-gradient(90deg, #94a3b8, #64748b); }
-
-.ss-match-text {
-  font-size: 8.5px;
-  font-weight: 700;
-  color: #94a3b8;
-  letter-spacing: 0.03em;
-}
-
-/* ═══ SKELETON ═══ */
-.ss-skeleton {
-  background: #fff;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  padding: 7px 9px;
-  margin-bottom: 5px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.ss-sk {
-  background: linear-gradient(90deg, #f1f5f9 0%, #e2e8f0 50%, #f1f5f9 100%);
-  background-size: 200% 100%;
-  animation: ss-sh 1.4s ease infinite;
-  border-radius: 5px;
-}
-
-@keyframes ss-sh {
-  0% { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
-}
-
-.ss-sk-thumb { width: 44px; height: 44px; flex-shrink: 0; }
-.ss-sk-lines { flex: 1; display: flex; flex-direction: column; gap: 5px; }
-.ss-sk-line { height: 8px; }
-.ss-sk-line.short { width: 55%; }
-
-/* ═══ FOOTER ═══ */
-.ss-footer {
-  padding: 6px 12px;
-  font-size: 8.5px;
-  color: #94a3b8;
-  text-align: center;
-  border-top: 1px solid #f1f5f9;
-  background: #fff;
-}
-
-/* ═══ EMPTY ═══ */
-.ss-empty {
-  padding: 30px 20px;
-  text-align: center;
-  background: #fff;
-  border-radius: 8px;
-}
-
-.ss-empty-icon { font-size: 30px; margin-bottom: 8px; opacity: 0.4; }
-
-.ss-empty-title {
-  font-size: 12px; font-weight: 700; color: #0a0a0a; margin-bottom: 4px;
-}
-
-.ss-empty-sub {
-  font-size: 10.5px; color: #94a3b8; line-height: 1.5;
-  margin-bottom: 12px;
-  max-width: 240px;
-  margin-left: auto;
-  margin-right: auto;
-}
-
-.ss-empty-btn {
-  background: #0a0a0a; color: #fff;
-  border: none; padding: 7px 14px;
-  border-radius: 6px;
-  font-size: 11px; font-weight: 700;
-  cursor: pointer; font-family: inherit;
-}
-
-.ss-empty-btn:hover { background: #1e293b; }
-
-/* ═══ MINIMIZED / HIDDEN / DRAG ═══ */
-#ss-floating-panel.ss-minimized .ss-current,
-#ss-floating-panel.ss-minimized .ss-filters,
-#ss-floating-panel.ss-minimized .ss-list,
-#ss-floating-panel.ss-minimized .ss-footer { display: none; }
-
-#ss-floating-panel.ss-hidden { display: none; }
-
-#ss-floating-panel.ss-dragging {
-  transition: none;
-  opacity: 0.95;
-  box-shadow: 0 18px 50px rgba(0,0,0,0.28);
-}
-
-#ss-floating-panel.ss-dragging .ss-header { cursor: grabbing; }
+/* ═══════════════════════════════════════════════════════
+   Smart Shopper — Content Script (v45 MEGA)
+   5-tier progressive filter + Coupon detection + Accurate price.
+   ═══════════════════════════════════════════════════════ */
+
+(function () {
+  "use strict";
+
+  if (window.__SMART_SHOPPER_LOADED__) return;
+  window.__SMART_SHOPPER_LOADED__ = true;
+
+  const T = typeof SS_T === "function" ? SS_T : (k) => k;
+  const LANG = typeof SS_LANG !== "undefined" ? SS_LANG : "en";
+  const IS_RTL = typeof SS_RTL !== "undefined" ? SS_RTL : false;
+
+  console.log(`[Smart Shopper] v45 MEGA | Lang: ${LANG}`);
+
+  const PANEL_ID = "ss-floating-panel";
+  const WORKER_URL = "https://cold-art-c5df.fislilouiza91.workers.dev";
+
+  // ⭐ رمز البلد للشحن - غيّره حسب بلدك (DZ، SA، EG، MA، US...)
+  const SHIP_TO_COUNTRY = "DZ";
+
+  let currentProduct = null;
+  let sellers = [];
+  let activeFilter = "best";
+  let minimized = false;
+  let isScanning = false;
+
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+  const esc = (s) => { const d = document.createElement("div"); d.textContent = s; return d.innerHTML; };
+  const fmt = (n) => n >= 1000 ? (n / 1000).toFixed(1).replace(".0", "") + "k" : String(n);
+
+  function formatPrice(v, currency) {
+    if (v == null || isNaN(v) || v === 0) return "—";
+    const sym = { USD: "$", EUR: "€", GBP: "£", SAR: "﷼", DA: "DA " }[currency] || "$";
+    const num = v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return IS_RTL ? `${num} ${sym.trim()}` : `${sym}${num}`;
+  }
+
+  function detectCurrency() {
+    const txt = document.body.innerText || "";
+    if (/\bDA\s*[\d,]/i.test(txt)) return "DA";
+    if (/\bEUR\b|€/.test(txt)) return "EUR";
+    if (/\bGBP\b|£/.test(txt)) return "GBP";
+    return "USD";
+  }
+
+  function extractNumbers(text) {
+    if (!text) return [];
+    const normalized = text
+      .replace(/[٠-٩]/g, d => "٠١٢٣٤٥٦٧٨٩".indexOf(d))
+      .replace(/[۰-۹]/g, d => "۰۱۲۳۴۵۶۷۸۹".indexOf(d))
+      .replace(/[,\u066C\u00A0]/g, "");
+    const results = [];
+    const patterns = [
+      /US\s*\$\s*([\d]+\.?\d{0,2})/g,
+      /\$\s*([\d]+\.?\d{0,2})/g,
+      /DA\s*([\d]+\.?\d{0,2})/g,
+      /€\s*([\d]+\.?\d{0,2})/g,
+      /£\s*([\d]+\.?\d{0,2})/g,
+    ];
+    for (const re of patterns) {
+      let m;
+      while ((m = re.exec(normalized)) !== null) {
+        const v = parseFloat(m[1]);
+        if (v > 0) results.push({ value: v, index: m.index });
+      }
+    }
+    return results;
+  }
+
+  function isExcludedContext(text) {
+    if (!text) return true;
+    return /(\boff\s+on\b|\boff\s+us\b|coupon|voucher|reduction|with\s+coins|extra\s+\d+\s*%|installment|x\s*\$|×\s*\$|pieces|pcs|piece|bulk|wholesale|minimum|per\s+piece|\d+\s*\+|buy\s+now\s+pay|tax\s+excl)/i.test(text);
+  }
+
+  function applyWelcomeDeal(price, rootEl) {
+    if (!price || !rootEl) return price;
+    const txt = rootEl.innerText || "";
+    let m = txt.match(/new\s+shoppers?\s+save\s+\$?\s*([\d.,]+)/i);
+    if (m) {
+      const save = parseFloat(m[1].replace(",", "."));
+      if (save > 0 && save < price) return Math.round((price - save) * 100) / 100;
+    }
+    return price;
+  }
+
+  function extractImageHash(url) {
+    if (!url) return "";
+    try {
+      const m = url.match(/\/kf\/([SH][A-Za-z0-9]+)\./);
+      if (m) return m[1].toUpperCase();
+      const m2 = url.match(/\/([A-Za-z0-9]{20,})\./);
+      if (m2) return m2[1].toUpperCase();
+      return "";
+    } catch (_) { return ""; }
+  }
+
+  function getTitle() {
+    const sels = [
+      "h1[data-pl='product-title']",
+      ".product-title-text",
+      ".pdp-comp-title",
+      "[class*='title--wrap'] h1",
+      "h1.product-title",
+    ];
+    for (const sel of sels) {
+      const el = document.querySelector(sel);
+      if (el) {
+        const t = el.innerText?.trim();
+        if (t && t.length > 8) return t;
+      }
+    }
+    return document.querySelector("meta[property='og:title']")?.getAttribute("content")?.trim() || "";
+  }
+
+  function getImage() {
+    const c = document.querySelector("meta[property='og:image']")?.getAttribute("content");
+    return (c && c.startsWith("http")) ? c : "";
+  }
+
+  function getSold() {
+    const sels = ["[class*='sold--']", ".product-reviewer-sold", "[class*='soldCount']"];
+    for (const sel of sels) {
+      const el = document.querySelector(sel);
+      if (!el) continue;
+      const m = (el.innerText || "").match(/([\d.,]+)\s*(k|K)?/);
+      if (m) {
+        let n = parseFloat(m[1].replace(/,/g, ""));
+        if (m[2]) n *= 1000;
+        if (n > 0) return Math.round(n);
+      }
+    }
+    return null;
+  }
+
+  function getRating() {
+    for (const el of document.querySelectorAll("[aria-label*='star'], [aria-label*='rating']")) {
+      const label = el.getAttribute("aria-label") || "";
+      const m = label.match(/([\d.]+)\s*(out of|stars?|rating)/i);
+      if (m) {
+        const r = parseFloat(m[1]);
+        if (r > 0 && r <= 5) return r;
+      }
+    }
+    return null;
+  }
+
+  function getPrice() {
+    const meta = document.querySelector("meta[property='product:price:amount']");
+    if (meta) {
+      const v = parseFloat(meta.getAttribute("content"));
+      if (v > 0.5) return v;
+    }
+    const priceEls = document.querySelectorAll("[class*='price'], [class*='Price']");
+    const candidates = [];
+    for (const el of priceEls) {
+      const cls = (el.className || "").toString().toLowerCase();
+      const style = (el.getAttribute("style") || "").toLowerCase();
+      if (/(old|origin|del|through|cross|before|strike|coupon|off|save|discount|reduce|promo|voucher|bulk|wholesale|minimum|tier)/i.test(cls)) continue;
+      if (/line-through/.test(style)) continue;
+      const txt = (el.innerText || "").trim();
+      if (!txt || isExcludedContext(txt)) continue;
+      const nums = extractNumbers(txt);
+      if (!nums.length || nums[0].value < 3) continue;
+      const isCurrent = /(current|sale|now|main|primary|big|large)/i.test(cls);
+      const fontSize = parseFloat(window.getComputedStyle(el).fontSize) || 12;
+      candidates.push({ value: nums[0].value, isCurrent, fontSize, el });
+    }
+    if (candidates.length) {
+      candidates.sort((a, b) => {
+        if (a.isCurrent !== b.isCurrent) return a.isCurrent ? -1 : 1;
+        return b.fontSize - a.fontSize;
+      });
+      let basePrice = candidates[0].value;
+      const container = candidates[0].el.closest("[class*='product'], [class*='pdp'], [class*='detail']") || document.body;
+      basePrice = applyWelcomeDeal(basePrice, container);
+      return basePrice;
+    }
+    return null;
+  }
+
+  function getProductId() {
+    const m = location.pathname.match(/\/item\/(\d+)/) || location.pathname.match(/(\d{10,})/);
+    return m ? m[1] : null;
+  }
+
+  function getOriginalStore() {
+    const sels = [
+      "[class*='store-info'] [class*='name']",
+      "[class*='seller-name']",
+      ".store-name",
+      "[class*='storeName']",
+    ];
+    for (const sel of sels) {
+      const el = document.querySelector(sel);
+      if (el) {
+        const t = el.innerText?.trim();
+        if (t && t.length > 2 && t.length < 60) return t;
+      }
+    }
+    return "";
+  }
+
+  function extractProduct() {
+    const img = getImage();
+    return {
+      id: getProductId(),
+      title: getTitle(),
+      image: img,
+      imageHash: extractImageHash(img),
+      price: getPrice(),
+      currency: detectCurrency(),
+      sold: getSold(),
+      rating: getRating(),
+      store: getOriginalStore(),
+      url: location.href.split("?")[0],
+    };
+  }
+
+  const STOP_WORDS = new Set([
+    "for","with","and","the","a","an","of","to","in","on","at","by","is","are",
+    "original","new","hot","sale","free","shipping","best","top","quality","high",
+    "wholesale","dropshipping","factory","brand","genuine","fast","delivery",
+    "1pc","2pcs","3pcs","pcs","set","pack","style","type","you","your","this","that",
+    "from","into","only","more","all","any","good","great","item","product","pieces",
+    "piece","color","colors","size","sizes","model","series","version",
+    "maximum","minimum","medium","direct","power","strong","small","large",
+    "big","cheap","premium","professional","portable","rechargeable",
+  ]);
+
+  function getKeywords(title) {
+    if (!title) return [];
+    return title.replace(/[^\p{L}\p{N}\s]/gu, " ").split(/\s+/)
+      .map(w => w.trim())
+      .filter(w => w.length > 2 && !STOP_WORDS.has(w.toLowerCase()) && !/^\d+$/.test(w))
+      .map(w => w.toLowerCase());
+  }
+
+  function extractBrand(title) {
+    if (!title) return "";
+    let m = title.match(/^\s*([A-Z][A-Z0-9]{2,15})\b/);
+    if (m) return m[1].toUpperCase();
+    m = title.match(/^\s*([A-Z][a-z]{2,15})\b/);
+    if (m) return m[1].toUpperCase();
+    m = title.slice(0, 60).match(/\b([A-Z][A-Z0-9]{2,15})\b/);
+    if (m) return m[1].toUpperCase();
+    return "";
+  }
+
+  function extractModels(title) {
+    if (!title) return [];
+    const set = new Set();
+    let m = title.match(/\b[A-Z]{2,5}\d{1,5}\b/g) || [];
+    m.forEach(x => set.add(x.toUpperCase()));
+    m = title.match(/\b\d{1,3}[A-Z]{2,5}\b/g) || [];
+    m.forEach(x => set.add(x.toUpperCase()));
+    return Array.from(set);
+  }
+
+  function getPrimaryModel(title) {
+    const models = extractModels(title);
+    for (const m of models) {
+      if (/^[A-Z]{2,5}\d{1,5}$/.test(m)) return m;
+    }
+    return models[0] || "";
+  }
+
+  function countKeywords(text, kw) {
+    if (!text || !kw.length) return 0;
+    const set = new Set(getKeywords(text));
+    let c = 0;
+    for (const k of kw) if (set.has(k)) c++;
+    return c;
+  }
+
+  function buildMegaQueries(title) {
+    const brand = extractBrand(title);
+    const primaryModel = getPrimaryModel(title);
+    const allModels = extractModels(title);
+    const kws = getKeywords(title);
+    const queries = [];
+    const seenKw = new Set();
+
+    function addQ(name, kw) {
+      kw = (kw || "").trim();
+      if (!kw) return;
+      const key = kw.toLowerCase();
+      if (seenKw.has(key)) return;
+      seenKw.add(key);
+      queries.push({ name, keywords: kw, pageSize: 50 });
+    }
+
+    if (brand && primaryModel) addQ("brand+model", `${brand} ${primaryModel}`);
+    if (brand && primaryModel) addQ("brand-model-p2", `${brand} ${primaryModel}`, 2);
+
+    if (primaryModel) {
+      addQ("model-only", primaryModel);
+      addQ("model-p2", primaryModel, 2);
+    }
+
+    if (brand && kws.length >= 2) addQ("brand+2kw", `${brand} ${kws[0]} ${kws[1]}`);
+    if (brand && kws.length >= 3) addQ("brand+3kw", `${brand} ${kws[0]} ${kws[1]} ${kws[2]}`);
+
+    if (brand && kws.length >= 1) addQ("brand+kw1", `${brand} ${kws[0]}`);
+    if (brand) addQ("brand-only", brand);
+
+    if (primaryModel && kws.length >= 1) addQ("model+kw", `${primaryModel} ${kws[0]}`);
+    if (primaryModel && brand) addQ("model+brand+kw", `${primaryModel} ${brand} ${kws[0]}`);
+
+    if (allModels.length >= 2) addQ("all-models", allModels.slice(0, 3).join(" "));
+
+    if (kws.length >= 2) addQ("kw2", `${kws[0]} ${kws[1]}`);
+    if (kws.length >= 3) addQ("kw3", `${kws[0]} ${kws[1]} ${kws[2]}`);
+    if (kws.length >= 4) addQ("kw4", kws.slice(0, 4).join(" "));
+
+    if (kws.length >= 3) addQ("kw-spread", `${kws[0]} ${kws[2]}`);
+
+    return queries.slice(0, 20);
+  }
+
+  async function fetchMegaSearch(queries) {
+    const res = await fetch(`${WORKER_URL}/api/deep-search`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        queries,
+        currency: detectCurrency(),
+        country: SHIP_TO_COUNTRY
+      }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const payload = await res.json();
+    if (!payload.ok) throw new Error(payload.error || "API error");
+    return payload.data;
+  }
+
+  // ⭐ فحص الكوبونات للمنتجات
+  async function fetchCouponsForProducts(productIds) {
+    if (!productIds || !productIds.length) return {};
+
+    try {
+      const res = await fetch(`${WORKER_URL}/api/coupon-check`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          product_ids: productIds,
+          currency: detectCurrency(),
+          country: SHIP_TO_COUNTRY
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.ok) return data.data.coupons || {};
+      }
+    } catch (e) {
+      console.error("[Smart Shopper] Coupon check error:", e);
+    }
+    return {};
+  }
+
+  // ⭐ جلب السعر الدقيق عند النقر
+  async function fetchAccuratePriceAndOpen(productId, fallbackUrl, cardElement) {
+    if (cardElement) {
+      cardElement.style.opacity = "0.6";
+      cardElement.style.pointerEvents = "none";
+    }
+
+    try {
+      console.log(`[Smart Shopper] Fetching accurate price for ID: ${productId}`);
+
+      const res = await fetch(`${WORKER_URL}/api/product-details`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          product_ids: [productId],
+          currency: detectCurrency(),
+          country: SHIP_TO_COUNTRY
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.ok && data.data.products && data.data.products.length > 0) {
+          const dp = data.data.products[0];
+          const accuratePrice = parseFloat(
+            dp.target_sale_price ||
+            dp.sale_price ||
+            dp.app_sale_price ||
+            dp.original_price ||
+            0
+          );
+
+          if (accuratePrice > 0 && cardElement) {
+            const priceEl = cardElement.querySelector(".ss-price-now");
+            if (priceEl) {
+              priceEl.textContent = formatPrice(accuratePrice, detectCurrency());
+              priceEl.style.transition = "all 0.3s";
+              priceEl.style.color = "#10b981";
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.error("[Smart Shopper] Error fetching accurate price:", e);
+    } finally {
+      if (cardElement) {
+        cardElement.style.opacity = "1";
+        cardElement.style.pointerEvents = "auto";
+      }
+    }
+
+    if (fallbackUrl) {
+      window.open(fallbackUrl, "_blank", "noopener");
+    }
+  }
+
+  function scoreProduct(p, ctx) {
+    const price = parseFloat(p.target_sale_price || p.sale_price || 0);
+    const oldP = parseFloat(p.target_original_price || p.original_price || 0);
+    const rating = parseFloat(String(p.evaluate_rate || "0").replace("%", "")) / 20;
+    const title = p.product_title || p.product_name || "";
+    const id = String(p.product_id || "");
+    const store = (p.shop_name || p.store_name || "").trim();
+    const img = p.product_main_image_url || "";
+    const imageHash = extractImageHash(img);
+
+    if (!id || !price || !title) return null;
+    if (id === ctx.productId) return null;
+
+    const titleUpper = title.toUpperCase();
+    const hashMatch = ctx.imageHash && imageHash && ctx.imageHash === imageHash;
+    const hasPrimaryModel = ctx.primaryModel && titleUpper.includes(ctx.primaryModel);
+    const cardBrand = extractBrand(title);
+    const brandMatch = ctx.brand && cardBrand && ctx.brand === cardBrand;
+    const kwMatches = countKeywords(title, ctx.keywords);
+
+    let tier = 0;
+    let score = 0;
+
+    if (hashMatch) { tier = 1; score = 200; }
+    else if (brandMatch && hasPrimaryModel && kwMatches >= 2) { tier = 1; score = 150; }
+    else if (brandMatch && hasPrimaryModel) { tier = 2; score = 120; }
+    else if (hasPrimaryModel && kwMatches >= 3) { tier = 2; score = 100; }
+    else if (brandMatch && kwMatches >= 3) { tier = 3; score = 80; }
+    else if (hasPrimaryModel && kwMatches >= 2) { tier = 3; score = 70; }
+    else if (brandMatch && kwMatches >= 2) { tier = 4; score = 50; }
+    else if (kwMatches >= 4) { tier = 4; score = 40; }
+    else if (kwMatches >= 3) { tier = 5; score = 25; }
+    else { return null; }
+
+    if (ctx.referencePrice > 0) {
+      const ratio = price / ctx.referencePrice;
+      if (ratio < 0.15 || ratio > 7.0) return null;
+    }
+
+    const finalOld = (oldP > price && price > 0) ? oldP : 0;
+    const discount = finalOld > 0 ? Math.round((1 - price / finalOld) * 100) : 0;
+
+    return {
+      _tier: tier,
+      _score: score,
+      _id: id,
+      _store: store.toLowerCase(),
+      _imageHash: imageHash,
+      store: store || "AliExpress Seller",
+      img,
+      price,
+      oldPrice: finalOld,
+      discount,
+      rating: rating > 0 && rating <= 5 ? +rating.toFixed(1) : 0,
+      sold: parseInt(p.lastest_volume || p.volume || 0, 10),
+      link: p.promotion_link || p.product_detail_url || "",
+      title,
+      similarity: Math.min(score, 100),
+      isHashMatch: hashMatch,
+      brandMatch,
+      hasPrimaryModel,
+      kwMatches,
+      hasCoupon: false,
+      couponInfo: null,
+    };
+  }
+
+  function pickProgressive(scored, ctx) {
+    const seenIds = new Set();
+    const seenStores = new Set();
+    const seenHashes = new Set();
+    const accepted = [];
+    const storesOriginal = ctx.originalStore.toLowerCase();
+
+    scored.sort((a, b) => {
+      if (a._tier !== b._tier) return a._tier - b._tier;
+      return b._score - a._score;
+    });
+
+    for (const s of scored) {
+      if (seenIds.has(s._id)) continue;
+      if (s._store && storesOriginal && s._store === storesOriginal) continue;
+      if (s._tier > 1 && s._store && seenStores.has(s._store)) continue;
+      if (s._imageHash && seenHashes.has(s._imageHash) && !s.isHashMatch) continue;
+
+      seenIds.add(s._id);
+      if (s._store) seenStores.add(s._store);
+      if (s._imageHash) seenHashes.add(s._imageHash);
+
+      accepted.push(s);
+      if (accepted.length >= 20) break;
+    }
+
+    return accepted;
+  }
+
+  function rankProducts(products) {
+    return products.map(p => {
+      let rank = p._score;
+      if (p.rating >= 4.5) rank += 5;
+      if (p.sold >= 100) rank += 3;
+      return { ...p, _rank: rank };
+    }).sort((a, b) => {
+      if (Math.abs(b._rank - a._rank) > 5) return b._rank - a._rank;
+      return a.price - b.price;
+    });
+  }
+
+  function buildPanel() {
+    document.getElementById(PANEL_ID)?.remove();
+    const panel = document.createElement("div");
+    panel.id = PANEL_ID;
+    if (IS_RTL) panel.setAttribute("dir", "rtl");
+
+    panel.innerHTML = `
+      <div class="ss-header">
+        <div class="ss-header-left">
+          <div class="ss-logo">S</div>
+          <div>
+            <div class="ss-title">${T("title")}</div>
+            <div class="ss-subtitle" id="ss-source">${T("scanning")}</div>
+          </div>
+        </div>
+        <div class="ss-header-actions">
+          <button class="ss-btn-icon" data-action="refresh">↻</button>
+          <button class="ss-btn-icon" data-action="minimize">−</button>
+          <button class="ss-btn-icon" data-action="close">×</button>
+        </div>
+      </div>
+      <div class="ss-current">
+        <div class="ss-current-thumb"><img id="ss-cur-img" src="" alt=""></div>
+        <div class="ss-current-info">
+          <div class="ss-current-title" id="ss-cur-title">${T("scanning")}</div>
+          <div class="ss-current-meta" id="ss-cur-meta"></div>
+        </div>
+      </div>
+      <div class="ss-filters" id="ss-filters">
+        <button class="ss-chip" data-f="cheap">${T("cheapest")}</button>
+        <button class="ss-chip ss-active" data-f="best">${T("bestValue")}</button>
+        <button class="ss-chip" data-f="discount">${T("bestDiscount")}</button>
+        <button class="ss-chip" data-f="sold">${T("mostSold")}</button>
+      </div>
+      <div class="ss-list" id="ss-list"></div>
+      <div class="ss-footer">${T("footer")}</div>
+    `;
+    document.body.appendChild(panel);
+
+    panel.querySelector("[data-action='close']").onclick = () => panel.classList.add("ss-hidden");
+    panel.querySelector("[data-action='minimize']").onclick = () => {
+      minimized = !minimized;
+      panel.classList.toggle("ss-minimized", minimized);
+      panel.querySelector("[data-action='minimize']").textContent = minimized ? "+" : "−";
+    };
+    panel.querySelector("[data-action='refresh']").onclick = () => { if (!isScanning) doScan(); };
+    panel.querySelector("#ss-filters").onclick = (e) => {
+      const chip = e.target.closest(".ss-chip");
+      if (!chip) return;
+      activeFilter = chip.dataset.f;
+      panel.querySelectorAll(".ss-chip").forEach(c => c.classList.toggle("ss-active", c === chip));
+      renderList();
+    };
+
+    makeDraggable(panel);
+    restorePosition(panel);
+    renderCurrentProduct();
+    renderLoading();
+  }
+
+  async function doScan() {
+    if (isScanning) return;
+    isScanning = true;
+    renderLoading();
+
+    try {
+      const brand = extractBrand(currentProduct.title);
+      const primaryModel = getPrimaryModel(currentProduct.title);
+      const models = extractModels(currentProduct.title);
+      const keywords = getKeywords(currentProduct.title);
+      const referencePrice = currentProduct.price;
+      const originalStore = currentProduct.store || "";
+      const imageHash = currentProduct.imageHash || "";
+
+      console.log("═══════════════════════════════════════════");
+      console.log("[Smart Shopper] v45 MEGA");
+      console.log("[Smart Shopper] Product:", currentProduct.title.slice(0, 60));
+      console.log("[Smart Shopper] Brand:", brand);
+      console.log("[Smart Shopper] Primary Model:", primaryModel);
+      console.log("═══════════════════════════════════════════");
+
+      const queries = buildMegaQueries(currentProduct.title);
+
+      if (!queries.length) {
+        sellers = [];
+        renderEmpty();
+        return;
+      }
+
+      const data = await fetchMegaSearch(queries);
+      const raw = data?.products || [];
+
+      const ctx = {
+        productId: currentProduct.id,
+        brand,
+        primaryModel,
+        models,
+        keywords,
+        referencePrice,
+        originalStore,
+        imageHash,
+      };
+
+      const scored = [];
+      for (const p of raw) {
+        const s = scoreProduct(p, ctx);
+        if (s) scored.push(s);
+      }
+
+      const picked = pickProgressive(scored, ctx);
+      sellers = rankProducts(picked);
+
+      // ⭐ فحص الكوبونات
+      try {
+        const productIds = sellers.map(s => s._id).filter(Boolean);
+        const couponsMap = await fetchCouponsForProducts(productIds);
+
+        sellers = sellers.map(s => ({
+          ...s,
+          hasCoupon: !!(couponsMap[s._id]?.hasCoupon),
+          couponInfo: couponsMap[s._id] || null
+        }));
+
+        const couponCount = sellers.filter(s => s.hasCoupon).length;
+        console.log(`[Smart Shopper] 🎟️ Coupons found: ${couponCount}/${sellers.length}`);
+      } catch (e) {
+        console.error("[Smart Shopper] Coupon merge error:", e);
+      }
+
+      updateSourceLabel(sellers.length > 0 ? "smart" : "none");
+      renderList();
+    } catch (e) {
+      console.error("[Smart Shopper] Scan error:", e);
+      sellers = [];
+      renderEmpty();
+    } finally {
+      isScanning = false;
+    }
+  }
+
+  function updateSourceLabel(mode) {
+    const el = document.getElementById("ss-source");
+    if (!el) return;
+    if (mode === "smart") el.textContent = T("sameProduct") + " ✓";
+    else if (mode === "none") el.textContent = "No matches";
+    else el.textContent = T("scanning");
+  }
+
+  function renderCurrentProduct() {
+    if (!currentProduct) return;
+    const img = document.getElementById("ss-cur-img");
+    const title = document.getElementById("ss-cur-title");
+    const meta = document.getElementById("ss-cur-meta");
+    if (img) {
+      if (currentProduct.image) {
+        img.src = currentProduct.image;
+        img.onerror = () => { img.style.display = "none"; };
+      } else img.style.display = "none";
+    }
+    if (title) title.textContent = currentProduct.title || "—";
+    if (meta) {
+      const parts = [];
+      if (currentProduct.price != null) parts.push(`<strong>${formatPrice(currentProduct.price, currentProduct.currency)}</strong>`);
+      if (currentProduct.rating != null) parts.push(`<span class="ss-meta-pill ss-star">★ ${currentProduct.rating}</span>`);
+      if (currentProduct.sold != null) parts.push(`<span class="ss-meta-pill">${fmt(currentProduct.sold)} ${T("sold")}</span>`);
+      meta.innerHTML = parts.join(" ");
+    }
+  }
+
+  function renderLoading() {
+    const list = document.getElementById("ss-list");
+    if (!list) return;
+    list.innerHTML = Array.from({ length: 4 }).map(() => `
+      <div class="ss-skeleton">
+        <div class="ss-sk ss-sk-thumb"></div>
+        <div class="ss-sk-lines">
+          <div class="ss-sk ss-sk-line"></div>
+          <div class="ss-sk ss-sk-line short"></div>
+        </div>
+      </div>
+    `).join("");
+  }
+
+  function renderEmpty() {
+    const list = document.getElementById("ss-list");
+    if (!list) return;
+    list.innerHTML = `
+      <div class="ss-empty">
+        <div class="ss-empty-icon">🎯</div>
+        <div class="ss-empty-title">No matches found</div>
+        <div class="ss-empty-sub">
+          This product seems unique. Try another product.
+        </div>
+        <button class="ss-empty-btn" id="ss-retry">${T("scanAgain")}</button>
+      </div>
+    `;
+    document.getElementById("ss-retry")?.addEventListener("click", () => doScan());
+  }
+
+  function sortSellers(arr, f) {
+    const copy = [...arr];
+    if (f === "cheap") return copy.sort((a, b) => a.price - b.price);
+    if (f === "discount") return copy.sort((a, b) => (b.discount || 0) - (a.discount || 0));
+    if (f === "sold") return copy.sort((a, b) => (b.sold || 0) - (a.sold || 0));
+    return copy.sort((a, b) => b._rank - a._rank);
+  }
+
+  function renderList() {
+    const list = document.getElementById("ss-list");
+    if (!list) return;
+    if (!sellers.length) return renderEmpty();
+
+    const items = sortSellers(sellers, activeFilter);
+    const minPrice = Math.min(...items.map(s => s.price).filter(p => p > 0));
+    const currentPrice = currentProduct?.price || 0;
+
+    list.innerHTML = items.slice(0, 20).map((s, i) => {
+      const rank = i + 1;
+      const isCheap = s.price === minPrice && s.price > 0;
+      const cardClass = rank === 1 ? "ss-best" : (isCheap ? "ss-cheap" : "");
+      const rankClass = rank <= 3 ? `ss-r${rank}` : "";
+
+      let badge = "";
+      if (s.isHashMatch) badge = `<span class="ss-badge ss-badge-match">🎯 EXACT</span>`;
+      else if (s.brandMatch && s.hasPrimaryModel) badge = `<span class="ss-badge ss-badge-match" style="background:#ecfdf5;color:#065f46">✓ SAME</span>`;
+      else if (activeFilter === "cheap" && rank === 1) badge = `<span class="ss-badge ss-badge-cheap">${T("cheapestTag")}</span>`;
+      else if (activeFilter === "discount" && rank === 1) badge = `<span class="ss-badge ss-badge-hot">${T("bestDeal")}</span>`;
+      else if (activeFilter === "sold" && rank === 1) badge = `<span class="ss-badge ss-badge-top">${T("mostSoldTag")}</span>`;
+      else if (activeFilter === "best" && rank === 1) badge = `<span class="ss-badge ss-badge-best">${T("bestValueTag")}</span>`;
+      else if (isCheap) badge = `<span class="ss-badge ss-badge-cheap">${T("bestPrice")}</span>`;
+
+      // ⭐ شارة الكوبون
+      const couponClass = s.hasCoupon ? "ss-has-coupon" : "";
+      const couponBadge = s.hasCoupon
+        ? `<span class="ss-badge ss-badge-coupon">🎟️ COUPON</span>`
+        : "";
+      const couponHint = s.hasCoupon && s.couponInfo?.discount
+        ? `<span class="ss-coupon-hint">🎁 ${esc(s.couponInfo.discount)}</span>`
+        : (s.hasCoupon ? `<span class="ss-coupon-hint">🎁 كوبون متاح</span>` : "");
+
+      const discountBadge = s.discount > 0 ? `<span class="ss-save-badge">-${s.discount}%</span>` : "";
+      const oldPriceHtml = s.oldPrice > 0 && s.oldPrice > s.price
+        ? `<span class="ss-price-old">${formatPrice(s.oldPrice, currentProduct.currency)}</span>` : "";
+
+      let compareVs = "";
+      if (currentPrice && s.price > 0) {
+        const diff = s.price - currentPrice;
+        const pct = Math.round(Math.abs(diff) / currentPrice * 100);
+        if (diff < 0) compareVs = `<span class="ss-compare-vs up">−${pct}%</span>`;
+        else if (diff > 0) compareVs = `<span class="ss-compare-vs down">+${pct}%</span>`;
+        else compareVs = `<span class="ss-compare-vs same">=</span>`;
+      }
+
+      const subtitleItems = [];
+      if (s.rating > 0) subtitleItems.push(`<span class="ss-tag-inline rating">★ ${s.rating.toFixed(1)}</span>`);
+      if (s.sold > 0) subtitleItems.push(`<span class="ss-tag-inline sold">${fmt(s.sold)} ${T("sold")}</span>`);
+
+      const imgHtml = s.img
+        ? `<img src="${s.img}" loading="lazy" onerror="this.style.display='none';this.parentElement.innerHTML='🖼️'">`
+        : `🖼️`;
+
+      return `
+        <div class="ss-card ${cardClass} ${couponClass}" data-idx="${i}" data-product-id="${esc(s._id)}">
+          <div class="ss-card-row">
+            <div class="ss-rank ${rankClass}">${rank}</div>
+            <div class="ss-card-thumb">${imgHtml}</div>
+            <div class="ss-card-info">
+              <div class="ss-card-title">${esc(s.store)} ${badge}${couponBadge}</div>
+              <div class="ss-card-subtitle">${subtitleItems.join('<span class="ss-sep">●</span>')}</div>
+            </div>
+            <div class="ss-price-col">
+              <div class="ss-price-line">
+                <span class="ss-price-now">${formatPrice(s.price, currentProduct.currency)}</span>
+                ${discountBadge}
+              </div>
+              <div style="display:flex;align-items:center;justify-content:flex-end;gap:5px">
+                ${oldPriceHtml}
+                ${compareVs}
+              </div>
+              ${couponHint}
+            </div>
+          </div>
+        </div>
+      `;
+    }).join("");
+
+    list.querySelectorAll(".ss-card").forEach(card => {
+      card.addEventListener("click", () => {
+        const item = items[+card.dataset.idx];
+        if (!item?.link) return;
+
+        let productId = item._id;
+        if (!productId) {
+          const m = item.link.match(/\/item\/(\d+)/);
+          productId = m ? m[1] : null;
+        }
+
+        if (productId) {
+          fetchAccuratePriceAndOpen(productId, item.link, card);
+        } else {
+          window.open(item.link, "_blank", "noopener");
+        }
+      });
+    });
+  }
+
+  function makeDraggable(panel) {
+    const header = panel.querySelector(".ss-header");
+    if (!header) return;
+    let dragging = false, sx, sy, sl, st;
+    header.addEventListener("mousedown", (e) => {
+      if (e.target.closest(".ss-btn-icon")) return;
+      e.preventDefault();
+      dragging = true;
+      panel.classList.add("ss-dragging");
+      const r = panel.getBoundingClientRect();
+      sx = e.clientX; sy = e.clientY; sl = r.left; st = r.top;
+      panel.style.right = "auto"; panel.style.left = sl + "px"; panel.style.top = st + "px";
+      document.addEventListener("mousemove", onMove);
+      document.addEventListener("mouseup", onUp);
+    });
+    function onMove(e) {
+      if (!dragging) return;
+      const dx = e.clientX - sx, dy = e.clientY - sy;
+      panel.style.left = Math.max(4, Math.min(sl + dx, innerWidth - panel.offsetWidth - 4)) + "px";
+      panel.style.top = Math.max(4, Math.min(st + dy, innerHeight - panel.offsetHeight - 4)) + "px";
+    }
+    function onUp() {
+      dragging = false;
+      panel.classList.remove("ss-dragging");
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      try { localStorage.setItem("ss-pos", JSON.stringify({ left: panel.style.left, top: panel.style.top })); } catch (_) {}
+    }
+  }
+
+  function restorePosition(panel) {
+    try {
+      const saved = localStorage.getItem("ss-pos");
+      if (!saved) return;
+      const { left, top } = JSON.parse(saved);
+      if (left && top) { panel.style.right = "auto"; panel.style.left = left; panel.style.top = top; }
+    } catch (_) {}
+  }
+
+  async function run() {
+    await sleep(800);
+    currentProduct = extractProduct();
+    console.log("[Smart Shopper] v45 MEGA ready");
+    if (!currentProduct.title || currentProduct.title.length < 5) return;
+    buildPanel();
+    await doScan();
+  }
+
+  chrome.runtime.onMessage.addListener((msg, _s, res) => {
+    if (msg.type === "GET_PRODUCT") {
+      try { res({ ok: true, product: extractProduct() }); }
+      catch (e) { res({ ok: false, error: String(e) }); }
+      return true;
+    }
+  });
+
+  run();
+  console.log("[Smart Shopper] v45 ready.");
+})();
