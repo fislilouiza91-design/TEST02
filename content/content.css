@@ -1,6 +1,5 @@
 /* ═══════════════════════════════════════════
-   Smart Shopper — Compact Rich Panel (v29)
-   + Coupon Badge support
+   Smart Shopper — Compact Rich Panel (v28 → v44 SORT)
    ═══════════════════════════════════════════ */
 
 #ss-floating-panel,
@@ -182,7 +181,6 @@
 
 /* ═══ COMPACT CARD ═══ */
 .ss-card {
-  position: relative;
   background: #fff;
   border: 1px solid #e2e8f0;
   border-radius: 8px;
@@ -208,12 +206,24 @@
   background: linear-gradient(180deg, #fff7ed 0%, #fff 60%);
 }
 
+/* ⭐⭐⭐ NEW: بطاقة تطابق الصورة — إطار ذهبي */
+.ss-card.ss-imgmatch {
+  border: 1.5px solid #f59e0b;
+  background: linear-gradient(180deg, #fffbeb 0%, #fff 65%);
+  box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.15);
+}
+
+.ss-card.ss-imgmatch.ss-best {
+  border-color: #f59e0b;
+  background: linear-gradient(180deg, #fef3c7 0%, #fff 65%);
+}
+
 @keyframes ss-card-fade {
   from { opacity: 0; transform: translateY(4px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
-/* ═══ CARD SINGLE ROW ═══ */
+/* ═══ CARD ROW ═══ */
 .ss-card-row {
   display: flex;
   align-items: center;
@@ -232,6 +242,11 @@
 .ss-rank.ss-r1 { background: linear-gradient(135deg, #10b981, #059669); color: #fff; }
 .ss-rank.ss-r2 { background: linear-gradient(135deg, #3b82f6, #2563eb); color: #fff; }
 .ss-rank.ss-r3 { background: linear-gradient(135deg, #a855f7, #7c3aed); color: #fff; }
+
+/* ⭐ إذا كان r1 + imgmatch → لون ذهبي */
+.ss-card.ss-imgmatch .ss-rank.ss-r1 {
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+}
 
 .ss-card-thumb {
   width: 44px; height: 44px;
@@ -355,7 +370,7 @@
 .ss-compare-vs.down { color: #ea580c; }
 .ss-compare-vs.same { color: #64748b; }
 
-/* ═══ BADGE ═══ */
+/* ═══ BADGES ═══ */
 .ss-badge {
   display: inline-flex;
   align-items: center;
@@ -380,61 +395,14 @@
   border: 1px solid #93c5fd;
 }
 
-/* ═══ COUPON BADGE ═══ */
-.ss-badge-coupon {
-  background: linear-gradient(135deg, #dc2626, #ef4444);
+/* ⭐⭐⭐ NEW: شارة تطابق الصورة — ذهبية */
+.ss-badge-exact {
+  background: linear-gradient(135deg, #f59e0b, #d97706);
   color: #fff;
-  padding: 1px 5px;
-  font-size: 8px;
-  font-weight: 800;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
-  border-radius: 3px;
-  margin-left: 3px;
-  vertical-align: middle;
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  box-shadow: 0 1px 3px rgba(220, 38, 38, 0.35);
-  animation: ss-coupon-pulse 1.8s ease-in-out infinite;
+  box-shadow: 0 1px 3px rgba(245, 158, 11, 0.4);
 }
 
-@keyframes ss-coupon-pulse {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.05); }
-}
-
-.ss-coupon-hint {
-  display: block;
-  font-size: 8.5px;
-  color: #dc2626;
-  font-weight: 700;
-  margin-top: 2px;
-  direction: ltr;
-  text-align: right;
-}
-
-.ss-card.ss-has-coupon {
-  border-color: #fca5a5;
-  background: linear-gradient(180deg, #fef2f2 0%, #fff 70%);
-}
-
-.ss-card.ss-has-coupon::before {
-  content: "🎟️ COUPON";
-  position: absolute;
-  top: -1px;
-  right: -1px;
-  background: linear-gradient(135deg, #dc2626, #ef4444);
-  color: #fff;
-  font-size: 7.5px;
-  font-weight: 800;
-  padding: 2px 6px;
-  border-radius: 0 8px 0 8px;
-  letter-spacing: 0.05em;
-  z-index: 2;
-}
-
-/* ═══ MATCH BAR ═══ */
+/* ═══ MATCH BAR (شريط النتيجة) ═══ */
 .ss-match-line {
   display: flex;
   align-items: center;
@@ -466,6 +434,15 @@
   font-weight: 700;
   color: #94a3b8;
   letter-spacing: 0.03em;
+}
+
+/* ⭐ عند تطابق الصورة → الشريط ذهبي */
+.ss-card.ss-imgmatch .ss-match-fill {
+  background: linear-gradient(90deg, #f59e0b, #d97706);
+}
+
+.ss-card.ss-imgmatch .ss-match-text {
+  color: #b45309;
 }
 
 /* ═══ SKELETON ═══ */
