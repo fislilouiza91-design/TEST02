@@ -1,11 +1,14 @@
 /* ============================================
    Smart Shopper - Background Service Worker
-   Full page per click - No item limit
+   Fetching via Cloudflare Worker
    ============================================ */
 
-// 🔴 غيّر الرابط إلى رابط Worker الخاص بك
+// 🔴 مهم: غيّر هذا الرابط إلى رابط Worker الخاص بك
 const WORKER_URL = 'https://smart-shopper.smailsuit11.workers.dev';
 
+/* ============================================
+   Listener
+   ============================================ */
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (!msg) return;
 
@@ -23,14 +26,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 });
 
 /* ============================================
-   البحث الأولي - الصفحة الأولى كاملة
+   البحث الأولي - صفحة واحدة
    ============================================ */
 async function handleSearch(msg, sender, sendResponse) {
   const tabId = sender.tab && sender.tab.id;
   const q = encodeURIComponent((msg.title || '').slice(0, 90));
   const baseUrl = 'https://www.aliexpress.com/wholesale?SearchText=' + q + '&catId=0';
 
-  console.log('[Smart Shopper BG] === INITIAL SEARCH (page 1, full) ===');
+  console.log('[Smart Shopper BG] === INITIAL SEARCH (page 1) ===');
 
   try {
     const items = await fetchPage(baseUrl, 1);
@@ -45,7 +48,7 @@ async function handleSearch(msg, sender, sendResponse) {
 
     const hasMore = newItems.length > 0;
 
-    console.log('[Smart Shopper BG] Page 1 →', newItems.length, 'items (full page)');
+    console.log('[Smart Shopper BG] Page 1 →', newItems.length, 'items');
 
     sendResponse({
       ok: true,
@@ -73,7 +76,7 @@ async function handleSearch(msg, sender, sendResponse) {
 }
 
 /* ============================================
-   المزيد - الصفحة التالية كاملة
+   المزيد - الصفحة التالية
    ============================================ */
 async function handleLoadMore(msg, sender, sendResponse) {
   const q = encodeURIComponent((msg.title || '').slice(0, 90));
@@ -81,7 +84,7 @@ async function handleLoadMore(msg, sender, sendResponse) {
   const nextPage = Math.max(2, parseInt(msg.startPage) || 2);
   const existingIds = msg.existingIds || [];
 
-  console.log('[Smart Shopper BG] === LOAD MORE (page', nextPage, ', full) ===');
+  console.log('[Smart Shopper BG] === LOAD MORE (page', nextPage, ') ===');
 
   try {
     const items = await fetchPage(baseUrl, nextPage);
@@ -94,17 +97,15 @@ async function handleLoadMore(msg, sender, sendResponse) {
       newItems.push(it);
     }
 
-    // hasMore = يوجد عناصر جديدة فعلية
     const hasMore = newItems.length > 0;
 
-    console.log('[Smart Shopper BG] Page', nextPage, '→', newItems.length, 'new items (full page)');
+    console.log('[Smart Shopper BG] Page', nextPage, '→', newItems.length, 'new items');
 
     sendResponse({
       ok: true,
       items: newItems,
       lastPage: nextPage,
-      hasMore: hasMore,
-      totalFetched: newItems.length
+      hasMore: hasMore
     });
   } catch (e) {
     console.error('[Smart Shopper BG] Load more error:', e);
@@ -118,7 +119,7 @@ async function handleLoadMore(msg, sender, sendResponse) {
 }
 
 /* ============================================
-   Fetch via Cloudflare Worker
+   🔥 Fetch via Cloudflare Worker
    ============================================ */
 async function fetchPage(baseUrl, page) {
   try {
@@ -142,11 +143,10 @@ async function fetchPage(baseUrl, page) {
     console.log('[Smart Shopper BG] HTML size:', html.length);
 
     if (html.length < 5000) {
-      console.warn('[Smart Shopper BG] ⚠️ Small response');
+      console.warn('[Smart Shopper BG] ⚠️ Small response (likely blocked)');
       return [];
     }
 
-    // ✅ جلب كل المنتجات من الصفحة (بدون أي قص)
     let items = parseItems(html);
     if (!items.length) items = fallbackIds(html);
 
