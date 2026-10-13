@@ -1,6 +1,6 @@
 /* ============================================
    Smart Shopper - Content Script
-   Self-fetch from current domain (fix .us/.com)
+   Self-fetch from current domain + URL fallback
    ============================================ */
 (function () {
   'use strict';
@@ -11,7 +11,6 @@
   const BATCH_SIZE = 15;
   const ESTIMATED_SEARCH_TIME = 10000;
   const MAX_PAGES = 6;
-  const PARALLEL_BATCH = 2;
   const DELAY_BETWEEN_BATCHES = 800;
   const MAX_RETRIES = 3;
 
@@ -320,17 +319,23 @@
   }
 
   /* ============================================
-     FETCH from SAME DOMAIN (fix .us vs .com)
+     FETCH with full browser-like headers
      ============================================ */
   async function fetchPageWithRetry(url) {
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       try {
         console.log('[Smart Shopper] Attempt', attempt, ':', url);
+
         const res = await fetch(url, {
           credentials: 'same-origin',
           headers: {
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-            'Accept-Language': navigator.language || 'fr-FR,fr;q=0.9,en;q=0.8'
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': navigator.language || 'fr-FR,fr;q=0.9,en;q=0.8',
+            'Referer': location.origin + '/',
+            'Sec-Fetch-Dest': 'document',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-Site': 'same-origin',
+            'Upgrade-Insecure-Requests': '1'
           }
         });
 
@@ -339,6 +344,14 @@
         if (res.status === 200) {
           const html = await res.text();
           console.log('[Smart Shopper] HTML size:', html.length);
+
+          // 🔍 إذا كانت الصفحة صغيرة، اطبع محتواها لمعرفة السبب
+          if (html.length < 5000) {
+            console.warn('[Smart Shopper] ⚠️ Small HTML detected. Content preview:');
+            console.warn(html.slice(0, 800));
+            return null;
+          }
+
           return html;
         }
 
@@ -483,67 +496,115 @@
   }
 
   /* ============================================
-     PERFORM SEARCH - uses CURRENT DOMAIN
+     PERFORM SEARCH - test multiple URL formats
      ============================================ */
   async function performSearch(title) {
     const q = encodeURIComponent((title || '').slice(0, 90));
+    const host = location.hostname;
+    const origin = location.origin;
 
-    // 🔑 استخدام نفس النطاق الحالي (aliexpress.us أو aliexpress.com)
-    const currentHost = location.hostname;
-    const baseUrl = `https://${currentHost}/wholesale?SearchText=${q}&catId=0`;
-    cachedSearchUrl = baseUrl;
+    const slugified = encodeURIComponent(title.slice(0, 80)).replace(/%20/g, '-');
+
+    // ثلاث صيغ مختلفة لرابط البحث
+    const urls = [
+      `${origin}/wholesale?SearchText=${q}&catId=0`,
+      `${origin}/w/wholesale-${slugified}.html`,
+      `${origin}/af/wholesale-${slugified}.html`
+    ];
+
+    cachedSearchUrl = urls[0];
 
     console.log('[Smart Shopper] === SEARCH START ===');
-    console.log('[Smart Shopper] Host:', currentHost);
+    console.log('[Smart Shopper] Host:', host);
+    console.log('[Smart Shopper] Origin:', origin);
     console.log('[Smart Shopper] Query:', q.slice(0, 60));
-    console.log('[Smart Shopper] URL:', baseUrl);
 
     const seenIds = new Set();
     let totalFetched = 0;
+    let workingUrl = null;
 
-    for (let batch = 0; batch < MAX_PAGES; batch += PARALLEL_BATCH) {
-      if (closed) return;
+    // اختبر الصيغ الثلاث
+    for (const testUrl of urls) {
+      console.log('[Smart Shopper] Testing URL format:', testUrl.slice(0, 120));
+      const html = await fetchPageWithRetry(testUrl);
+      if (html && html.length > 10000) {
+        console.log('[Smart Shopper] ✅ Working URL:', testUrl.slice(0, 120));
+        workingUrl = testUrl;
 
-      const pages = [];
-      for (let i = 0; i < PARALLEL_BATCH && (batch + i) < MAX_PAGES; i++) {
-        pages.push(batch + i + 1);
-      }
-
-      const htmls = await Promise.all(pages.map(p => fetchPageWithRetry(baseUrl + '&page=' + p)));
-
-      const newItems = [];
-      for (const html of htmls) {
-        if (!html) continue;
         let items = parseItems(html);
         if (!items.length) items = fallbackIds(html);
         for (const it of items) {
           if (!it || !it.id || seenIds.has(it.id)) continue;
           seenIds.add(it.id);
-          newItems.push(it);
+          cachedItems.push(it);
         }
-      }
-
-      if (newItems.length > 0) {
-        totalFetched += newItems.length;
-        cachedItems = cachedItems.concat(newItems);
-        console.log('[Smart Shopper] Batch +', newItems.length, '(total:', totalFetched, ')');
-
-        const list = document.getElementById('ss-list');
-        const scrollTop = list ? list.scrollTop : 0;
-        applySort();
-        if (list) {
-          list.innerHTML = '';
-          renderedCount = 0;
-          setupImageObserver();
-          renderList(false);
-          list.scrollTop = scrollTop;
+        totalFetched = cachedItems.length;
+        if (totalFetched > 0) {
+          applySort();
+          const list = document.getElementById('ss-list');
+          if (list) {
+            list.innerHTML = '';
+            renderedCount = 0;
+            setupImageObserver();
+            renderList(false);
+          }
+          updateFooter();
         }
-        updateFooter();
+        break;
+      } else {
+        console.warn('[Smart Shopper] ❌ URL failed:', testUrl.slice(0, 120));
+      }
+    }
+
+    if (!workingUrl) {
+      console.error('[Smart Shopper] All URL formats failed.');
+      searchComplete = true;
+      updateFooter();
+      message(T('noResults'));
+      return;
+    }
+
+    // جلب باقي الصفحات من الرابط الناجح
+    for (let page = 2; page <= MAX_PAGES; page++) {
+      if (closed) return;
+
+      const sep = workingUrl.includes('?') ? '&' : '?';
+      const url = workingUrl + sep + 'page=' + page;
+      const html = await fetchPageWithRetry(url);
+      if (!html) continue;
+
+      let items = parseItems(html);
+      if (!items.length) items = fallbackIds(html);
+
+      const newItems = [];
+      for (const it of items) {
+        if (!it || !it.id || seenIds.has(it.id)) continue;
+        seenIds.add(it.id);
+        newItems.push(it);
       }
 
-      if (batch + PARALLEL_BATCH < MAX_PAGES) {
-        await new Promise(r => setTimeout(r, DELAY_BETWEEN_BATCHES));
+      if (newItems.length === 0) {
+        console.log('[Smart Shopper] Page', page, 'empty. Stopping.');
+        break;
       }
+
+      totalFetched += newItems.length;
+      cachedItems = cachedItems.concat(newItems);
+      console.log('[Smart Shopper] Page', page, '+', newItems.length, '(total:', totalFetched, ')');
+
+      const list = document.getElementById('ss-list');
+      const scrollTop = list ? list.scrollTop : 0;
+      applySort();
+      if (list) {
+        list.innerHTML = '';
+        renderedCount = 0;
+        setupImageObserver();
+        renderList(false);
+        list.scrollTop = scrollTop;
+      }
+      updateFooter();
+
+      await new Promise(r => setTimeout(r, DELAY_BETWEEN_BATCHES));
     }
 
     console.log('[Smart Shopper] === DONE === Total:', totalFetched);
