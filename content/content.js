@@ -1,6 +1,6 @@
 /* ============================================
    Smart Shopper - Content Script
-   With i18n support
+   Only shows on real product pages
    ============================================ */
 (function () {
   'use strict';
@@ -11,7 +11,6 @@
   const BATCH_SIZE = 15;
   const ESTIMATED_SEARCH_TIME = 9000;
 
-  // اللغة (مع default إلى الفرنسية)
   const T = (key) => (window.SS_I18N ? window.SS_I18N.t(key) : key);
 
   let currentKey = '';
@@ -46,25 +45,47 @@
     return out;
   }
 
+  /* ============================================
+     فحص صارم: هل نحن على صفحة منتج؟
+     ============================================ */
+  function isProductPage() {
+    const url = location.href;
+    // يقبل: aliexpress.com/item/123456.html أو aliexpress.com/i/123456.html
+    return /aliexpress\.(com|us)\/(item|i)\/\d+/i.test(url);
+  }
+
   function detectProduct() {
+    if (!isProductPage()) return null;
+
     try {
       const scripts = document.querySelectorAll('script[type="application/ld+json"]');
       for (const sc of scripts) {
         const data = JSON.parse(sc.textContent);
         const arr = Array.isArray(data) ? data : [data];
         for (const node of arr) {
-          const g = n => { if (!n) return null; if (n['@type'] === 'Product') return n; if (Array.isArray(n)) { for (const x of n) { const r = g(x); if (r) return r; } } if (n['@graph']) { const r = g(n['@graph']); if (r) return r; } return null; };
+          const g = n => {
+            if (!n) return null;
+            if (n['@type'] === 'Product') return n;
+            if (Array.isArray(n)) { for (const x of n) { const r = g(x); if (r) return r; } }
+            if (n['@graph']) { const r = g(n['@graph']); if (r) return r; }
+            return null;
+          };
           const p = g(node);
           if (p && p.name) return { title: String(p.name).slice(0, 160) };
         }
       }
     } catch (e) {}
-    const ogType = document.querySelector('meta[property="og:type"]');
-    const isProduct = ogType && /product/i.test(ogType.content || '');
+
+    // احتياطي: OG Title
     const ogTitle = document.querySelector('meta[property="og:title"]');
-    const title = ogTitle ? ogTitle.content.trim() : (document.title || '').replace(/[|\-–—].*$/, '').trim();
-    const hasPrice = !!document.querySelector('[itemprop="price"], [class*="price" i], meta[itemprop="price"], [id*="price" i]');
-    if ((isProduct || hasPrice) && title.length > 8) return { title: title.slice(0, 160) };
+    if (ogTitle && ogTitle.content && ogTitle.content.trim().length > 8) {
+      return { title: ogTitle.content.trim().slice(0, 160) };
+    }
+
+    // احتياطي أخير: عنوان الصفحة
+    const title = (document.title || '').replace(/[|\-–—].*$/, '').trim();
+    if (title.length > 8) return { title: title.slice(0, 160) };
+
     return null;
   }
 
@@ -327,11 +348,26 @@
     });
   }
 
+  /* ============================================
+     scan - يعمل بشكل دوري مع فحص صارم
+     ============================================ */
   function scan() {
     if (closed) return;
+
+    // فحص صارم: إذا لم نكن على صفحة منتج، احذف النافذة
+    if (!isProductPage()) {
+      const existing = document.getElementById(PANEL_ID);
+      if (existing) existing.remove();
+      currentKey = '';
+      return;
+    }
+
     const p = detectProduct();
-    const key = p ? (location.host + location.pathname + '|' + p.title) : '';
-    if (!p || key === currentKey) return;
+    if (!p || !p.title) return;
+
+    const key = location.host + location.pathname + '|' + p.title;
+    if (key === currentKey) return;
+
     currentKey = key;
     runSearch(p.title);
   }
@@ -366,6 +402,16 @@
     }
   });
 
+  // مراقبة تغييرات URL (SPA)
+  let lastUrl = location.href;
+  new MutationObserver(() => {
+    if (location.href !== lastUrl) {
+      lastUrl = location.href;
+      scan();
+    }
+  }).observe(document.body, { childList: true, subtree: true });
+
+  // فحص دوري كل 2.5 ثانية
   scan();
   setInterval(scan, 2500);
 })();
