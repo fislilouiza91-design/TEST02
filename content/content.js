@@ -1,6 +1,6 @@
 /* ============================================
    Smart Shopper - Content Script
-   Price comparison: green/red, keep discount %
+   Scroll to top on tab change + Green/Red prices
    ============================================ */
 (function () {
   'use strict';
@@ -120,7 +120,6 @@
      استخراج سعر المنتج الحالي
      ============================================ */
   function extractCurrentPrice() {
-    // 1. JSON-LD offers.price
     try {
       const scripts = document.querySelectorAll('script[type="application/ld+json"]');
       for (const sc of scripts) {
@@ -146,14 +145,12 @@
       }
     } catch (e) {}
 
-    // 2. og:price:amount
     const og = document.querySelector('meta[property="og:price:amount"]');
     if (og && og.content) {
       const v = parseFloat(String(og.content).replace(/[^\d.]/g, ''));
       if (v > 0) { console.log('[Smart Shopper] Price from og:price:', v); return v; }
     }
 
-    // 3. [itemprop="price"]
     const ip = document.querySelector('[itemprop="price"]');
     if (ip) {
       const raw = ip.content || ip.textContent || '';
@@ -161,7 +158,6 @@
       if (v > 0) { console.log('[Smart Shopper] Price from itemprop:', v); return v; }
     }
 
-    // 4. CSS selectors
     const selectors = [
       '[class*="price--current" i]',
       '[class*="currentPrice" i]',
@@ -319,6 +315,9 @@
     }
   }
 
+  /* ============================================
+     ✅ تفعيل التبويب + إعادة التمرير للأعلى
+     ============================================ */
   function activateTab(t, newTab) {
     if (pendingInterval) { clearInterval(pendingInterval); pendingInterval = null; }
     if (pendingTabEl) { restoreTab(pendingTabEl); pendingTabEl = null; }
@@ -327,6 +326,12 @@
     cachedSortedItems = [];
     renderedCount = 0;
     renderList(true);
+
+    // 🔝 إعادة التمرير للأعلى لعرض بداية الترتيب الجديد
+    const list = document.getElementById('ss-list');
+    if (list) {
+      list.scrollTop = 0;
+    }
   }
 
   function restoreTab(t) {
@@ -413,20 +418,17 @@
   }
 
   /* ============================================
-     بناء البطاقة - ✅ أخضر أو أحمر دائماً
+     بناء البطاقة - أخضر أو أحمر
      ============================================ */
   function buildCard(it, i) {
     const discountValue = it.discount ? String(it.discount).replace('-', '').replace('%', '') : '';
 
-    // 💰 تحديد اللون بناءً على المقارنة
     const itemPrice = num(it.price);
     const hasComparison = currentProductPrice > 0 && itemPrice > 0;
     const isHigher = hasComparison && itemPrice > currentProductPrice;
 
-    // ✅ لا رمادي: إما أخضر (default) أو أحمر
     const boxClass = isHigher ? 'ss-discount-box ss-higher-price' : 'ss-discount-box';
 
-    // ✅ نسبة الخصم تبقى دائماً إذا وُجدت
     const discountBoxHtml = `
       <div class="${boxClass}">
         <div class="ss-price-main">${it.price ? esc(formatPrice(it.price)) : '—'}</div>
@@ -590,6 +592,8 @@
 
         console.log('[Smart Shopper] Page', msg.page, '→ +' + uniqueNew.length, 'items');
 
+        // ⚠️ الحفاظ على موضع التمرير أثناء التحديث التلقائي
+        // (لا نعيد التمرير للأعلى هنا لأن المستخدم قد يكون يتصفح)
         const list = document.getElementById('ss-list');
         const scrollTop = list ? list.scrollTop : 0;
         applySort();
