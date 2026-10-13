@@ -1,6 +1,6 @@
 /* ============================================
    Smart Shopper - Content Script
-   Scroll to top on tab change + Green/Red prices
+   Initial search + Load More button
    ============================================ */
 (function () {
   'use strict';
@@ -13,6 +13,7 @@
   const T = (key, vars) => (window.SS_I18N ? window.SS_I18N.t(key, vars) : key);
 
   let currentKey = '';
+  let currentSearchTitle = '';
   let cachedItems = [];
   let cachedSortedItems = [];
   let cachedSearchUrl = '';
@@ -23,6 +24,9 @@
   let isLoadingMore = false;
 
   let currentProductPrice = 0;
+  let lastPageFetched = 0;
+  let hasMoreResults = true;
+  let loadingMore = false;
 
   let searchState = {
     running: false,
@@ -44,7 +48,8 @@
     cheapest: '<svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor"><path d="M21.41 11.58l-9-9C12.05 2.22 11.55 2 11 2H4c-1.1 0-2 .9-2 2v7c0 .55.22 1.05.59 1.42l9 9c.36.36.86.58 1.41.58s1.05-.22 1.41-.59l7-7c.37-.36.59-.86.59-1.41s-.23-1.06-.59-1.42zM5.5 7C4.67 7 4 6.33 4 5.5S4.67 4 5.5 4 7 4.67 7 5.5 6.33 7 5.5 7z"/></svg>',
     rated: '<svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>',
     discount: '<svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor"><path d="M13.5.67s.74 2.65.74 4.8c0 2.06-1.35 3.73-3.41 3.73-2.07 0-3.63-1.67-3.63-3.73l.03-.36C5.21 7.51 4 10.62 4 14c0 4.42 3.58 8 8 8s8-3.58 8-8C20 8.61 17.41 3.8 13.5.67z"/></svg>',
-    selling: '<svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor"><path d="M16 6l2.29 2.29-4.88 4.88-4-4L2 16.59 3.41 18l6-6 4 4 6.3-6.29L22 12V6z"/></svg>'
+    selling: '<svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor"><path d="M16 6l2.29 2.29-4.88 4.88-4-4L2 16.59 3.41 18l6-6 4 4 6.3-6.29L22 12V6z"/></svg>',
+    plus: '<svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>'
   };
 
   /* ============================================
@@ -75,12 +80,8 @@
     };
 
     currentCurrencySymbol = symbols[currentCurrencyCode] || currentCurrencyCode;
-    console.log('[Smart Shopper] Currency:', currentCurrencyCode, '→', currentCurrencySymbol);
   })();
 
-  /* ============================================
-     تنسيق السعر
-     ============================================ */
   function formatPrice(rawPrice) {
     if (!rawPrice) return '';
     const cleaned = String(rawPrice).replace(/[^\d.,]/g, '').trim();
@@ -109,16 +110,10 @@
     return out;
   }
 
-  /* ============================================
-     فحص صفحة المنتج
-     ============================================ */
   function isProductPage() {
     return /aliexpress\.(com|us)\/(item|i)\/\d+/i.test(location.href);
   }
 
-  /* ============================================
-     استخراج سعر المنتج الحالي
-     ============================================ */
   function extractCurrentPrice() {
     try {
       const scripts = document.querySelectorAll('script[type="application/ld+json"]');
@@ -138,7 +133,7 @@
             const off = Array.isArray(p.offers) ? p.offers[0] : p.offers;
             if (off && off.price) {
               const v = parseFloat(String(off.price).replace(/[^\d.]/g, ''));
-              if (v > 0) { console.log('[Smart Shopper] Price from JSON-LD:', v); return v; }
+              if (v > 0) return v;
             }
           }
         }
@@ -148,14 +143,14 @@
     const og = document.querySelector('meta[property="og:price:amount"]');
     if (og && og.content) {
       const v = parseFloat(String(og.content).replace(/[^\d.]/g, ''));
-      if (v > 0) { console.log('[Smart Shopper] Price from og:price:', v); return v; }
+      if (v > 0) return v;
     }
 
     const ip = document.querySelector('[itemprop="price"]');
     if (ip) {
       const raw = ip.content || ip.textContent || '';
       const v = parseFloat(String(raw).replace(/[^\d.]/g, ''));
-      if (v > 0) { console.log('[Smart Shopper] Price from itemprop:', v); return v; }
+      if (v > 0) return v;
     }
 
     const selectors = [
@@ -169,11 +164,10 @@
       const el = document.querySelector(sel);
       if (el) {
         const v = parseFloat(String(el.textContent).replace(/[^\d.]/g, ''));
-        if (v > 0) { console.log('[Smart Shopper] Price from', sel, ':', v); return v; }
+        if (v > 0) return v;
       }
     }
 
-    console.log('[Smart Shopper] Could not extract current price');
     return 0;
   }
 
@@ -212,9 +206,6 @@
     return null;
   }
 
-  /* ============================================
-     حساب الوقت المتبقي
-     ============================================ */
   function calcRemainingSec() {
     if (searchState.complete) return 0;
     if (!searchState.running) return 0;
@@ -223,9 +214,7 @@
     const elapsedSec = (Date.now() - searchState.startTime) / 1000;
     const avgPerPage = elapsedSec / searchState.pagesDone;
     const remainingPages = Math.max(0, searchState.pagesTotal - searchState.pagesDone);
-    const remaining = remainingPages * avgPerPage;
-
-    return Math.max(1, Math.ceil(remaining));
+    return Math.max(1, Math.ceil(remainingPages * avgPerPage));
   }
 
   /* ============================================
@@ -273,9 +262,6 @@
     makeDraggable(panel, document.getElementById('ss-header'));
   }
 
-  /* ============================================
-     Progress bar
-     ============================================ */
   function updateProgress() {
     const p = document.getElementById('ss-progress'); if (!p) return;
     if (!searchState.running && !searchState.complete) { p.innerHTML = ''; return; }
@@ -315,9 +301,6 @@
     }
   }
 
-  /* ============================================
-     ✅ تفعيل التبويب + إعادة التمرير للأعلى
-     ============================================ */
   function activateTab(t, newTab) {
     if (pendingInterval) { clearInterval(pendingInterval); pendingInterval = null; }
     if (pendingTabEl) { restoreTab(pendingTabEl); pendingTabEl = null; }
@@ -327,11 +310,9 @@
     renderedCount = 0;
     renderList(true);
 
-    // 🔝 إعادة التمرير للأعلى لعرض بداية الترتيب الجديد
+    // 🔝 إعادة التمرير للأعلى
     const list = document.getElementById('ss-list');
-    if (list) {
-      list.scrollTop = 0;
-    }
+    if (list) list.scrollTop = 0;
   }
 
   function restoreTab(t) {
@@ -362,9 +343,6 @@
     pendingInterval = setInterval(updateCountdown, 500);
   }
 
-  /* ============================================
-     التمرير
-     ============================================ */
   function onScroll(e) {
     if (isLoadingMore) return;
     const list = e.target;
@@ -417,9 +395,6 @@
     cachedSortedItems = [...cachedItems].sort(sorters[activeTab] || sorters[1]);
   }
 
-  /* ============================================
-     بناء البطاقة - أخضر أو أحمر
-     ============================================ */
   function buildCard(it, i) {
     const discountValue = it.discount ? String(it.discount).replace('-', '').replace('%', '') : '';
 
@@ -477,8 +452,12 @@
     }, { root: document.getElementById('ss-list'), rootMargin: '300px' });
   }
 
-  function renderList(reset) {
+  /* ============================================
+     renderList مع دعم هدف مرن
+     ============================================ */
+  function renderList(reset, renderUpTo) {
     const l = document.getElementById('ss-list'); if (!l) return;
+
     if (reset) {
       if (!cachedItems.length) { message(T('noResults')); return; }
       applySort();
@@ -486,47 +465,120 @@
       renderedCount = 0;
       setupImageObserver();
     }
+
     if (!cachedSortedItems.length) return;
+
     const start = renderedCount;
-    const end = Math.min(start + BATCH_SIZE, cachedSortedItems.length);
+    const end = renderUpTo !== undefined
+      ? Math.min(renderUpTo, cachedSortedItems.length)
+      : Math.min(start + BATCH_SIZE, cachedSortedItems.length);
+
+    if (start >= end) return;
+
     const batch = cachedSortedItems.slice(start, end);
     if (!batch.length) return;
+
     const fragment = document.createDocumentFragment();
     const temp = document.createElement('div');
     temp.innerHTML = batch.map((it, i) => buildCard(it, start + i)).join('');
     while (temp.firstChild) fragment.appendChild(temp.firstChild);
     l.appendChild(fragment);
     renderedCount = end;
+
     if (imageObserver) l.querySelectorAll('img[data-src]').forEach(img => imageObserver.observe(img));
     updateFooter();
   }
 
+  /* ============================================
+     Footer with Load More button
+     ============================================ */
   function updateFooter() {
     const f = document.getElementById('ss-footer'); if (!f) return;
-    const remaining = cachedSortedItems.length - renderedCount;
+
+    let html = '';
+
+    // رابط "عرض الكل"
     if (cachedSearchUrl) {
-      f.innerHTML = `
-        <a href="${esc(cachedSearchUrl)}" target="_blank" rel="noopener" class="ss-footer-link">
-          ${esc(T('viewAll'))}
-        </a>
-        ${remaining > 0 ? `<div class="ss-loading-more">${renderedCount} / ${cachedSortedItems.length} · ${esc(T('scrollForMore'))}</div>` : ''}`;
+      html += `<a href="${esc(cachedSearchUrl)}" target="_blank" rel="noopener" class="ss-footer-link">${esc(T('viewAll'))}</a>`;
     }
+
+    // زر المزيد أو رسالة "لا مزيد"
+    if (searchState.complete && !searchState.running) {
+      if (hasMoreResults) {
+        if (loadingMore) {
+          html += `<button class="ss-load-more-btn ss-load-more-loading" disabled>
+            <span class="ss-spinner"></span>
+            <span>${esc(T('loading'))}</span>
+          </button>`;
+        } else {
+          html += `<button class="ss-load-more-btn" id="ss-load-more">
+            ${SVG_ICONS.plus}
+            <span>${esc(T('loadMore'))}</span>
+          </button>`;
+        }
+      } else if (cachedItems.length > 0) {
+        html += `<div class="ss-no-more">${esc(T('noMoreResults'))}</div>`;
+      }
+    }
+
+    // عداد العرض
+    const remaining = cachedSortedItems.length - renderedCount;
+    if (remaining > 0) {
+      html += `<div class="ss-loading-more">${renderedCount} / ${cachedSortedItems.length} · ${esc(T('scrollForMore'))}</div>`;
+    }
+
+    f.innerHTML = html;
+
+    // ربط زر المزيد
+    const btn = document.getElementById('ss-load-more');
+    if (btn) btn.onclick = onLoadMoreClick;
   }
 
   /* ============================================
-     بدء البحث
+     عند الضغط على "المزيد"
+     ============================================ */
+  function onLoadMoreClick() {
+    if (loadingMore || !hasMoreResults || searchState.running) return;
+
+    loadingMore = true;
+    updateFooter();
+
+    const nextPage = lastPageFetched + 1;
+
+    console.log('[Smart Shopper] Load more from page', nextPage);
+
+    chrome.runtime.sendMessage({
+      type: 'SMART_LOAD_MORE',
+      title: currentSearchTitle,
+      startPage: nextPage
+    }, (resp) => {
+      if (!resp || !resp.ok) {
+        loadingMore = false;
+        updateFooter();
+      }
+    });
+  }
+
+  /* ============================================
+     بدء البحث الأولي
      ============================================ */
   function runSearch(title, productPrice) {
     buildPanel();
     const panel = document.getElementById(PANEL_ID);
     panel.style.display = '';
 
+    currentSearchTitle = title;
     currentProductPrice = productPrice || 0;
-    console.log('[Smart Shopper] === SEARCH ===');
-    console.log('[Smart Shopper] Current product price:', currentProductPrice);
+    lastPageFetched = 0;
+    hasMoreResults = true;
+    loadingMore = false;
+
+    console.log('[Smart Shopper] === INITIAL SEARCH ===');
+    console.log('[Smart Shopper] Price for comparison:', currentProductPrice);
 
     cachedItems = [];
     cachedSortedItems = [];
+    cachedSearchUrl = '';
     renderedCount = 0;
     activeTab = 0;
 
@@ -562,8 +614,10 @@
       searchState.pagesTotal = resp.totalPages || 3;
       searchState.pagesDone = resp.page || 1;
       searchState.totalItems = cachedItems.length;
+      lastPageFetched = resp.lastPage || 1;
+      hasMoreResults = resp.hasMore !== false;
 
-      console.log('[Smart Shopper] Page 1 →', cachedItems.length, 'items');
+      console.log('[Smart Shopper] Page 1 →', cachedItems.length, 'items (lastPage:', lastPageFetched, ', hasMore:', hasMoreResults, ')');
 
       renderList(true);
       updateProgress();
@@ -586,34 +640,44 @@
       if (uniqueNew.length) {
         cachedItems = cachedItems.concat(uniqueNew);
         cachedSearchUrl = msg.searchUrl || cachedSearchUrl;
-        searchState.pagesDone = msg.page || (searchState.pagesDone + 1);
-        searchState.pagesTotal = msg.totalPages || searchState.pagesTotal;
+        lastPageFetched = msg.lastPage || lastPageFetched;
+        hasMoreResults = msg.hasMore !== false;
+
+        if (!msg.isLoadMore) {
+          searchState.pagesDone = msg.page || (searchState.pagesDone + 1);
+          searchState.pagesTotal = msg.totalPages || searchState.pagesTotal;
+        }
         searchState.totalItems = cachedItems.length;
 
-        console.log('[Smart Shopper] Page', msg.page, '→ +' + uniqueNew.length, 'items');
+        console.log('[Smart Shopper] Update:', uniqueNew.length, 'items (total:', cachedItems.length, ', lastPage:', lastPageFetched, ', hasMore:', hasMoreResults, ')');
 
-        // ⚠️ الحفاظ على موضع التمرير أثناء التحديث التلقائي
-        // (لا نعيد التمرير للأعلى هنا لأن المستخدم قد يكون يتصفح)
+        // إعادة بناء القائمة مع الحفاظ على ما كان ظاهراً
+        const prevRendered = Math.max(renderedCount, BATCH_SIZE);
         const list = document.getElementById('ss-list');
         const scrollTop = list ? list.scrollTop : 0;
+
         applySort();
+
         if (list) {
           list.innerHTML = '';
           renderedCount = 0;
           setupImageObserver();
-          renderList(false);
+          renderList(false, Math.min(prevRendered + uniqueNew.length, cachedSortedItems.length));
           list.scrollTop = scrollTop;
         }
+
         updateFooter();
-        updateProgress();
+        if (!msg.isLoadMore) updateProgress();
       }
     }
 
     if (msg.type === 'SMART_SEARCH_DONE') {
-      console.log('[Smart Shopper] === SEARCH DONE ===');
+      console.log('[Smart Shopper] === INITIAL SEARCH DONE ===');
       searchState.running = false;
       searchState.complete = true;
       searchState.totalItems = msg.totalItems || cachedItems.length;
+      lastPageFetched = msg.lastPage || lastPageFetched;
+      hasMoreResults = msg.hasMore !== false;
 
       if (pendingTabEl) {
         activateTab(pendingTabEl, +pendingTabEl.dataset.i);
@@ -622,9 +686,15 @@
       updateProgress();
       updateFooter();
 
-      if (cachedItems.length === 0) {
-        message(T('noResults'));
-      }
+      if (cachedItems.length === 0) message(T('noResults'));
+    }
+
+    if (msg.type === 'SMART_LOAD_MORE_DONE') {
+      console.log('[Smart Shopper] === LOAD MORE DONE ===');
+      loadingMore = false;
+      lastPageFetched = msg.lastPage || lastPageFetched;
+      hasMoreResults = msg.hasMore !== false;
+      updateFooter();
     }
   });
 
@@ -654,7 +724,6 @@
     runSearch(p.title, p.price || 0);
   }
 
-  // مراقبة SPA
   let lastUrl = location.href;
   new MutationObserver(() => {
     if (location.href !== lastUrl) {
