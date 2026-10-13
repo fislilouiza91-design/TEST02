@@ -1,6 +1,6 @@
 /* ============================================
    Smart Shopper - Content Script
-   Progressive page-by-page loading + accurate countdown
+   SVG icons + Currency symbol at end of price
    ============================================ */
 (function () {
   'use strict';
@@ -22,20 +22,74 @@
   let imageObserver = null;
   let isLoadingMore = false;
 
-  // حالة البحث
   let searchState = {
     running: false,
     complete: false,
     startTime: 0,
-    pagesTotal: 5,
+    pagesTotal: 3,
     pagesDone: 0,
     totalItems: 0
   };
 
-  // حالة العد التنازلي على التبويبات
   let pendingTabEl = null;
   let pendingInterval = null;
 
+  /* ============================================
+     أيقونات SVG (بدل الإيموجي)
+     ============================================ */
+  const SVG_ICONS = {
+    all: '<svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor"><path d="M7 18c-1.1 0-1.99.9-1.99 2S5.9 22 7 22s2-.9 2-2-.9-2-2-2zM1 2v2h2l3.6 7.59-1.35 2.45c-.16.28-.25.61-.25.96 0 1.1.9 2 2 2h12v-2H7.42c-.14 0-.25-.11-.25-.25l.03-.12.9-1.63h7.45c.75 0 1.41-.41 1.75-1.03l3.58-6.49c.08-.14.12-.31.12-.48 0-.55-.45-1-1-1H5.21l-.94-2H1zm16 16c-1.1 0-1.99.9-1.99 2s.89 2 1.99 2 2-.9 2-2-.9-2-2-2z"/></svg>',
+    cheapest: '<svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor"><path d="M21.41 11.58l-9-9C12.05 2.22 11.55 2 11 2H4c-1.1 0-2 .9-2 2v7c0 .55.22 1.05.59 1.42l9 9c.36.36.86.58 1.41.58s1.05-.22 1.41-.59l7-7c.37-.36.59-.86.59-1.41s-.23-1.06-.59-1.42zM5.5 7C4.67 7 4 6.33 4 5.5S4.67 4 5.5 4 7 4.67 7 5.5 6.33 7 5.5 7z"/></svg>',
+    rated: '<svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>',
+    discount: '<svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor"><path d="M13.5.67s.74 2.65.74 4.8c0 2.06-1.35 3.73-3.41 3.73-2.07 0-3.63-1.67-3.63-3.73l.03-.36C5.21 7.51 4 10.62 4 14c0 4.42 3.58 8 8 8s8-3.58 8-8C20 8.61 17.41 3.8 13.5.67z"/></svg>',
+    selling: '<svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor"><path d="M16 6l2.29 2.29-4.88 4.88-4-4L2 16.59 3.41 18l6-6 4 4 6.3-6.29L22 12V6z"/></svg>'
+  };
+
+  /* ============================================
+     كشف العملة من كوكي AliExpress
+     ============================================ */
+  let currentCurrencySymbol = '$';
+  let currentCurrencyCode = 'USD';
+
+  (function detectCurrency() {
+    try {
+      const ck = document.cookie.match(/(?:^|;\s*)aep_usuc_f=([^;]+)/);
+      if (ck) {
+        const params = new URLSearchParams(decodeURIComponent(ck[1]));
+        const cur = params.get('c_tp');
+        if (cur) currentCurrencyCode = cur.toUpperCase();
+      }
+    } catch (e) {}
+
+    const symbols = {
+      USD: '$', EUR: '€', GBP: '£', JPY: '¥', CNY: '¥', RUB: '₽',
+      SAR: 'ر.س', AED: 'د.إ', KWD: 'د.ك', QAR: 'ر.ق', EGP: 'ج.م',
+      BRL: 'R$', CAD: 'C$', AUD: 'A$', INR: '₹', KRW: '₩',
+      THB: '฿', VND: '₫', TRY: '₺', PLN: 'zł', ILS: '₪',
+      IDR: 'Rp', MYR: 'RM', MXN: 'MX$', ZAR: 'R', NGN: '₦',
+      MAD: 'DH', DZD: 'DA', TND: 'DT', CHF: 'CHF', NOK: 'kr',
+      SEK: 'kr', DKK: 'kr', CZK: 'Kč', HUF: 'Ft', RON: 'lei',
+      UAH: '₴', KZT: '₸', PKR: '₨', BDT: '৳', LKR: 'Rs'
+    };
+
+    currentCurrencySymbol = symbols[currentCurrencyCode] || currentCurrencyCode;
+    console.log('[Smart Shopper] Currency:', currentCurrencyCode, '→', currentCurrencySymbol);
+  })();
+
+  /* ============================================
+     تنسيق السعر مع رمز العملة في النهاية
+     ============================================ */
+  function formatPrice(rawPrice) {
+    if (!rawPrice) return '';
+    // استخرج الأرقام والنقاط والفواصل فقط
+    const cleaned = String(rawPrice).replace(/[^\d.,]/g, '').trim();
+    if (!cleaned) return String(rawPrice);
+    return cleaned + ' ' + currentCurrencySymbol;
+  }
+
+  /* ============================================
+     Utils
+     ============================================ */
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const num = s => { const m = String(s || '').replace(/,/g, '').match(/(\d+(?:\.\d+)?)/); return m ? parseFloat(m[1]) : 0; };
   const soldNum = s => { const t = String(s || '').toLowerCase().replace(/,/g, ''); const m = t.match(/(\d+(?:\.\d+)?)\s*(k)?/); if (!m) return 0; let v = parseFloat(m[1]); if (m[2]) v *= 1000; return v; };
@@ -95,12 +149,12 @@
   }
 
   /* ============================================
-     حساب الوقت المتبقي بدقة
+     حساب الوقت المتبقي
      ============================================ */
   function calcRemainingSec() {
     if (searchState.complete) return 0;
     if (!searchState.running) return 0;
-    if (searchState.pagesDone === 0) return 10; // تقدير افتراضي
+    if (searchState.pagesDone === 0) return 10;
 
     const elapsedSec = (Date.now() - searchState.startTime) / 1000;
     const avgPerPage = elapsedSec / searchState.pagesDone;
@@ -132,11 +186,11 @@
       </div>
       <div class="ss-body" id="ss-body">
         <div class="ss-tabs" id="ss-tabs">
-          <span class="ss-tab active" data-i="0">${esc(T('tabAll'))}</span>
-          <span class="ss-tab" data-i="1">${esc(T('tabCheapest'))}</span>
-          <span class="ss-tab" data-i="2">${esc(T('tabBestRated'))}</span>
-          <span class="ss-tab" data-i="3">${esc(T('tabBestDiscount'))}</span>
-          <span class="ss-tab" data-i="4">${esc(T('tabBestSelling'))}</span>
+          <span class="ss-tab active" data-i="0">${SVG_ICONS.all}<span>Tous</span></span>
+          <span class="ss-tab" data-i="1">${SVG_ICONS.cheapest}<span>Moins cher</span></span>
+          <span class="ss-tab" data-i="2">${SVG_ICONS.rated}<span>Mieux noté</span></span>
+          <span class="ss-tab" data-i="3">${SVG_ICONS.discount}<span>Meilleure remise</span></span>
+          <span class="ss-tab" data-i="4">${SVG_ICONS.selling}<span>Plus vendu</span></span>
         </div>
         <div class="ss-progress" id="ss-progress"></div>
         <div class="ss-list" id="ss-list"></div>
@@ -156,7 +210,7 @@
   }
 
   /* ============================================
-     Progress bar - يظهر أثناء البحث
+     Progress bar
      ============================================ */
   function updateProgress() {
     const p = document.getElementById('ss-progress'); if (!p) return;
@@ -187,15 +241,12 @@
     if (newTab === activeTab && !t.classList.contains('ss-tab-counting')) return;
 
     if (searchState.complete) {
-      // البحث انتهى - تفعيل فوري
       activateTab(t, newTab);
     } else if (searchState.running) {
-      // البحث جارٍ - ابدأ العد التنازلي
       if (pendingTabEl && pendingTabEl !== t) restoreTab(pendingTabEl);
       pendingTabEl = t;
       startPendingCountdown(t);
     } else {
-      // لا يوجد بحث - تفعيل مباشر
       activateTab(t, newTab);
     }
   }
@@ -212,24 +263,26 @@
 
   function restoreTab(t) {
     if (t.dataset.originalText) {
-      t.textContent = t.dataset.originalText;
+      t.innerHTML = t.dataset.originalText;
       delete t.dataset.originalText;
     }
     t.classList.remove('ss-tab-counting');
   }
 
   function startPendingCountdown(tabEl) {
-    if (!tabEl.dataset.originalText) tabEl.dataset.originalText = tabEl.textContent;
+    if (!tabEl.dataset.originalText) tabEl.dataset.originalText = tabEl.innerHTML;
     tabEl.classList.add('ss-tab-counting');
 
     const updateCountdown = () => {
       if (searchState.complete) {
-        // انتهى البحث - فعّل التبويب
         activateTab(tabEl, +tabEl.dataset.i);
         return;
       }
       const remaining = calcRemainingSec();
-      tabEl.textContent = `⏳ ${remaining}s`;
+      // احتفظ بالأيقونة + النص
+      const svgMatch = tabEl.dataset.originalText.match(/<svg[^>]*>.*?<\/svg>/);
+      const svg = svgMatch ? svgMatch[0] : '';
+      tabEl.innerHTML = svg + `<span>⏳ ${remaining}s</span>`;
     };
 
     updateCountdown();
@@ -292,19 +345,22 @@
     cachedSortedItems = [...cachedItems].sort(sorters[activeTab] || sorters[1]);
   }
 
+  /* ============================================
+     بناء البطاقة
+     ============================================ */
   function buildCard(it, i) {
     const discountValue = it.discount ? String(it.discount).replace('-', '').replace('%', '') : '';
     let discountBoxHtml = '';
     if (discountValue) {
       discountBoxHtml = `
         <div class="ss-discount-box">
-          <div class="ss-price-main">${it.price ? esc(it.price) : '—'}</div>
+          <div class="ss-price-main">${it.price ? esc(formatPrice(it.price)) : '—'}</div>
           <div class="ss-discount-label">-${esc(discountValue)}%</div>
         </div>`;
     } else {
       discountBoxHtml = `
         <div class="ss-discount-box ss-no-discount">
-          <div class="ss-price-main">${it.price ? esc(it.price) : '—'}</div>
+          <div class="ss-price-main">${it.price ? esc(formatPrice(it.price)) : '—'}</div>
         </div>`;
     }
 
@@ -394,7 +450,6 @@
     const panel = document.getElementById(PANEL_ID);
     panel.style.display = '';
 
-    // إعادة تعيين
     cachedItems = [];
     cachedSortedItems = [];
     renderedCount = 0;
@@ -407,12 +462,11 @@
       x.classList.toggle('active', x.dataset.i === '0');
     });
 
-    // حالة البحث الجديدة
     searchState = {
       running: true,
       complete: false,
       startTime: Date.now(),
-      pagesTotal: 5, // قيمة افتراضية
+      pagesTotal: 3,
       pagesDone: 0,
       totalItems: 0
     };
@@ -428,10 +482,9 @@
         return;
       }
 
-      // الدفعة الأولى
       cachedItems = resp.items || [];
       cachedSearchUrl = resp.searchUrl || '';
-      searchState.pagesTotal = resp.totalPages || 5;
+      searchState.pagesTotal = resp.totalPages || 3;
       searchState.pagesDone = resp.page || 1;
       searchState.totalItems = cachedItems.length;
 
@@ -443,7 +496,7 @@
   }
 
   /* ============================================
-     استقبال التحديثات من background
+     استقبال التحديثات
      ============================================ */
   chrome.runtime.onMessage.addListener((msg) => {
     if (!msg) return;
@@ -462,9 +515,8 @@
         searchState.pagesTotal = msg.totalPages || searchState.pagesTotal;
         searchState.totalItems = cachedItems.length;
 
-        console.log('[Smart Shopper] Page', msg.page, '→ +' + uniqueNew.length, 'items (total:', cachedItems.length, ')');
+        console.log('[Smart Shopper] Page', msg.page, '→ +' + uniqueNew.length, 'items');
 
-        // إعادة عرض مع الاحتفاظ بموضع التمرير
         const list = document.getElementById('ss-list');
         const scrollTop = list ? list.scrollTop : 0;
         applySort();
@@ -486,7 +538,6 @@
       searchState.complete = true;
       searchState.totalItems = msg.totalItems || cachedItems.length;
 
-      // إذا كان هناك تبويب ينتظر، فعّله فوراً
       if (pendingTabEl) {
         activateTab(pendingTabEl, +pendingTabEl.dataset.i);
       }
