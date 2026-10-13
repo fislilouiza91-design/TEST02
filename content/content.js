@@ -1,6 +1,6 @@
 /* ============================================
    Smart Shopper - Content Script
-   Self-fetch from current domain + URL fallback
+   Self-fetch from current domain + clean display URL
    ============================================ */
 (function () {
   'use strict';
@@ -324,7 +324,7 @@
   async function fetchPageWithRetry(url) {
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       try {
-        console.log('[Smart Shopper] Attempt', attempt, ':', url);
+        console.log('[Smart Shopper] Attempt', attempt, ':', url.slice(0, 100));
 
         const res = await fetch(url, {
           credentials: 'same-origin',
@@ -345,10 +345,8 @@
           const html = await res.text();
           console.log('[Smart Shopper] HTML size:', html.length);
 
-          // 🔍 إذا كانت الصفحة صغيرة، اطبع محتواها لمعرفة السبب
           if (html.length < 5000) {
-            console.warn('[Smart Shopper] ⚠️ Small HTML detected. Content preview:');
-            console.warn(html.slice(0, 800));
+            console.warn('[Smart Shopper] ⚠️ Small HTML (probably CAPTCHA/redirect)');
             return null;
           }
 
@@ -496,81 +494,58 @@
   }
 
   /* ============================================
-     PERFORM SEARCH - test multiple URL formats
+     PERFORM SEARCH - clean display URL
      ============================================ */
   async function performSearch(title) {
     const q = encodeURIComponent((title || '').slice(0, 90));
-    const host = location.hostname;
     const origin = location.origin;
+    const slug = encodeURIComponent(title.slice(0, 80)).replace(/%20/g, '-').toLowerCase();
 
-    const slugified = encodeURIComponent(title.slice(0, 80)).replace(/%20/g, '-');
+    // 🔒 رابط البحث الداخلي (للجلب فقط)
+    const fetchUrl = `${origin}/wholesale?SearchText=${q}&catId=0`;
 
-    // ثلاث صيغ مختلفة لرابط البحث
-    const urls = [
-      `${origin}/wholesale?SearchText=${q}&catId=0`,
-      `${origin}/w/wholesale-${slugified}.html`,
-      `${origin}/af/wholesale-${slugified}.html`
-    ];
-
-    cachedSearchUrl = urls[0];
+    // 🌐 رابط العرض للمستخدم (نظيف بدون CAPTCHA)
+    cachedSearchUrl = `https://www.aliexpress.com/w/wholesale-${slug}.html`;
 
     console.log('[Smart Shopper] === SEARCH START ===');
-    console.log('[Smart Shopper] Host:', host);
     console.log('[Smart Shopper] Origin:', origin);
     console.log('[Smart Shopper] Query:', q.slice(0, 60));
+    console.log('[Smart Shopper] Display URL:', cachedSearchUrl);
 
     const seenIds = new Set();
     let totalFetched = 0;
-    let workingUrl = null;
 
-    // اختبر الصيغ الثلاث
-    for (const testUrl of urls) {
-      console.log('[Smart Shopper] Testing URL format:', testUrl.slice(0, 120));
-      const html = await fetchPageWithRetry(testUrl);
-      if (html && html.length > 10000) {
-        console.log('[Smart Shopper] ✅ Working URL:', testUrl.slice(0, 120));
-        workingUrl = testUrl;
+    // صفحة 1
+    const html1 = await fetchPageWithRetry(fetchUrl);
+    if (html1) {
+      let items = parseItems(html1);
+      if (!items.length) items = fallbackIds(html1);
+      for (const it of items) {
+        if (!it || !it.id || seenIds.has(it.id)) continue;
+        seenIds.add(it.id);
+        cachedItems.push(it);
+      }
+      totalFetched = cachedItems.length;
+      console.log('[Smart Shopper] Page 1 →', items.length, 'items');
 
-        let items = parseItems(html);
-        if (!items.length) items = fallbackIds(html);
-        for (const it of items) {
-          if (!it || !it.id || seenIds.has(it.id)) continue;
-          seenIds.add(it.id);
-          cachedItems.push(it);
+      if (totalFetched > 0) {
+        applySort();
+        const list = document.getElementById('ss-list');
+        if (list) {
+          list.innerHTML = '';
+          renderedCount = 0;
+          setupImageObserver();
+          renderList(false);
         }
-        totalFetched = cachedItems.length;
-        if (totalFetched > 0) {
-          applySort();
-          const list = document.getElementById('ss-list');
-          if (list) {
-            list.innerHTML = '';
-            renderedCount = 0;
-            setupImageObserver();
-            renderList(false);
-          }
-          updateFooter();
-        }
-        break;
-      } else {
-        console.warn('[Smart Shopper] ❌ URL failed:', testUrl.slice(0, 120));
+        updateFooter();
       }
     }
 
-    if (!workingUrl) {
-      console.error('[Smart Shopper] All URL formats failed.');
-      searchComplete = true;
-      updateFooter();
-      message(T('noResults'));
-      return;
-    }
-
-    // جلب باقي الصفحات من الرابط الناجح
+    // باقي الصفحات
     for (let page = 2; page <= MAX_PAGES; page++) {
       if (closed) return;
 
-      const sep = workingUrl.includes('?') ? '&' : '?';
-      const url = workingUrl + sep + 'page=' + page;
-      const html = await fetchPageWithRetry(url);
+      const html = await fetchPageWithRetry(fetchUrl + '&page=' + page);
       if (!html) continue;
 
       let items = parseItems(html);
