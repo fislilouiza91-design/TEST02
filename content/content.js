@@ -1,6 +1,6 @@
 /* ============================================
    Smart Shopper - Content Script
-   Price comparison coloring
+   Price comparison: green/red, keep discount %
    ============================================ */
 (function () {
   'use strict';
@@ -22,7 +22,6 @@
   let imageObserver = null;
   let isLoadingMore = false;
 
-  // 💰 سعر المنتج الحالي (للمقارنة)
   let currentProductPrice = 0;
 
   let searchState = {
@@ -111,19 +110,17 @@
   }
 
   /* ============================================
-     فحص صفحة المنتج + استخراج السعر
+     فحص صفحة المنتج
      ============================================ */
   function isProductPage() {
     return /aliexpress\.(com|us)\/(item|i)\/\d+/i.test(location.href);
   }
 
-  function detectProduct() {
-    if (!isProductPage()) return null;
-
-    let title = null;
-    let price = 0;
-
-    // محاولة 1: JSON-LD Product
+  /* ============================================
+     استخراج سعر المنتج الحالي
+     ============================================ */
+  function extractCurrentPrice() {
+    // 1. JSON-LD offers.price
     try {
       const scripts = document.querySelectorAll('script[type="application/ld+json"]');
       for (const sc of scripts) {
@@ -138,72 +135,84 @@
             return null;
           };
           const p = g(node);
-          if (p) {
-            if (p.name && !title) title = String(p.name).slice(0, 160);
-
-            if (p.offers && !price) {
-              const offers = Array.isArray(p.offers) ? p.offers[0] : p.offers;
-              if (offers) {
-                const raw = offers.price || offers.lowPrice || offers.highPrice || '';
-                if (raw) price = num(raw);
-              }
+          if (p && p.offers) {
+            const off = Array.isArray(p.offers) ? p.offers[0] : p.offers;
+            if (off && off.price) {
+              const v = parseFloat(String(off.price).replace(/[^\d.]/g, ''));
+              if (v > 0) { console.log('[Smart Shopper] Price from JSON-LD:', v); return v; }
             }
           }
         }
       }
     } catch (e) {}
 
-    // محاولة 2: og:price:amount
-    if (!price) {
-      const ogPrice = document.querySelector('meta[property="og:price:amount"]');
-      if (ogPrice && ogPrice.content) price = num(ogPrice.content);
+    // 2. og:price:amount
+    const og = document.querySelector('meta[property="og:price:amount"]');
+    if (og && og.content) {
+      const v = parseFloat(String(og.content).replace(/[^\d.]/g, ''));
+      if (v > 0) { console.log('[Smart Shopper] Price from og:price:', v); return v; }
     }
 
-    // محاولة 3: itemprop="price"
-    if (!price) {
-      const metaPrice = document.querySelector('meta[itemprop="price"]');
-      if (metaPrice && metaPrice.content) price = num(metaPrice.content);
-      const elPrice = document.querySelector('[itemprop="price"]');
-      if (!price && elPrice) {
-        const m = elPrice.textContent.match(/(\d+(?:[.,]\d+)?)/);
-        if (m) price = num(m[1]);
+    // 3. [itemprop="price"]
+    const ip = document.querySelector('[itemprop="price"]');
+    if (ip) {
+      const raw = ip.content || ip.textContent || '';
+      const v = parseFloat(String(raw).replace(/[^\d.]/g, ''));
+      if (v > 0) { console.log('[Smart Shopper] Price from itemprop:', v); return v; }
+    }
+
+    // 4. CSS selectors
+    const selectors = [
+      '[class*="price--current" i]',
+      '[class*="currentPrice" i]',
+      '[class*="ProductPrice"] [class*="value"]',
+      '.product-price-value',
+      '[class*="sale-price" i]'
+    ];
+    for (const sel of selectors) {
+      const el = document.querySelector(sel);
+      if (el) {
+        const v = parseFloat(String(el.textContent).replace(/[^\d.]/g, ''));
+        if (v > 0) { console.log('[Smart Shopper] Price from', sel, ':', v); return v; }
       }
     }
 
-    // محاولة 4: DOM
-    if (!price) {
-      const selectors = [
-        '.product-price-value',
-        '[class*="ProductPrice" i] [class*="value" i]',
-        '[class*="price--current" i]',
-        '[class*="price_current" i]',
-        '[class*="sale-price" i]',
-        '[class*="currentPrice" i]'
-      ];
-      for (const sel of selectors) {
-        const el = document.querySelector(sel);
-        if (el) {
-          const m = el.textContent.match(/(\d+(?:[.,]\d+)?)/);
-          if (m) { price = num(m[1]); break; }
+    console.log('[Smart Shopper] Could not extract current price');
+    return 0;
+  }
+
+  function detectProduct() {
+    if (!isProductPage()) return null;
+
+    const price = extractCurrentPrice();
+
+    try {
+      const scripts = document.querySelectorAll('script[type="application/ld+json"]');
+      for (const sc of scripts) {
+        const data = JSON.parse(sc.textContent);
+        const arr = Array.isArray(data) ? data : [data];
+        for (const node of arr) {
+          const g = n => {
+            if (!n) return null;
+            if (n['@type'] === 'Product') return n;
+            if (Array.isArray(n)) { for (const x of n) { const r = g(x); if (r) return r; } }
+            if (n['@graph']) { const r = g(n['@graph']); if (r) return r; }
+            return null;
+          };
+          const p = g(node);
+          if (p && p.name) return { title: String(p.name).slice(0, 160), price: price };
         }
       }
+    } catch (e) {}
+
+    const ogTitle = document.querySelector('meta[property="og:title"]');
+    if (ogTitle && ogTitle.content && ogTitle.content.trim().length > 8) {
+      return { title: ogTitle.content.trim().slice(0, 160), price: price };
     }
 
-    // احتياطي للعنوان
-    if (!title) {
-      const ogTitle = document.querySelector('meta[property="og:title"]');
-      if (ogTitle && ogTitle.content && ogTitle.content.trim().length > 8) {
-        title = ogTitle.content.trim().slice(0, 160);
-      } else {
-        const t = (document.title || '').replace(/[|\-–—].*$/, '').trim();
-        if (t.length > 8) title = t.slice(0, 160);
-      }
-    }
+    const title = (document.title || '').replace(/[|\-–—].*$/, '').trim();
+    if (title.length > 8) return { title: title.slice(0, 160), price: price };
 
-    if (title) {
-      console.log('[Smart Shopper] Current product price:', price, currentCurrencyCode);
-      return { title, price };
-    }
     return null;
   }
 
@@ -404,21 +413,21 @@
   }
 
   /* ============================================
-     بناء البطاقة (مع ألوان حسب السعر)
+     بناء البطاقة - ✅ أخضر أو أحمر دائماً
      ============================================ */
   function buildCard(it, i) {
     const discountValue = it.discount ? String(it.discount).replace('-', '').replace('%', '') : '';
 
-    // 💰 مقارنة السعر مع سعر المنتج الحالي
+    // 💰 تحديد اللون بناءً على المقارنة
     const itemPrice = num(it.price);
-    const hasCurrentPrice = currentProductPrice > 0;
-    const isHigherPrice = hasCurrentPrice && itemPrice > currentProductPrice;
+    const hasComparison = currentProductPrice > 0 && itemPrice > 0;
+    const isHigher = hasComparison && itemPrice > currentProductPrice;
 
-    let boxClass = 'ss-discount-box';
-    if (isHigherPrice) boxClass += ' ss-higher-price';
-    else if (!discountValue) boxClass += ' ss-no-discount';
+    // ✅ لا رمادي: إما أخضر (default) أو أحمر
+    const boxClass = isHigher ? 'ss-discount-box ss-higher-price' : 'ss-discount-box';
 
-    let discountBoxHtml = `
+    // ✅ نسبة الخصم تبقى دائماً إذا وُجدت
+    const discountBoxHtml = `
       <div class="${boxClass}">
         <div class="ss-price-main">${it.price ? esc(formatPrice(it.price)) : '—'}</div>
         ${discountValue ? `<div class="ss-discount-label">-${esc(discountValue)}%</div>` : ''}
@@ -511,7 +520,8 @@
     panel.style.display = '';
 
     currentProductPrice = productPrice || 0;
-    console.log('[Smart Shopper] Price for comparison:', currentProductPrice);
+    console.log('[Smart Shopper] === SEARCH ===');
+    console.log('[Smart Shopper] Current product price:', currentProductPrice);
 
     cachedItems = [];
     cachedSortedItems = [];
@@ -633,7 +643,7 @@
     const p = detectProduct();
     if (!p || !p.title) return;
 
-    const key = location.host + location.pathname + '|' + p.title;
+    const key = location.host + location.pathname + '|' + p.title + '|' + p.price;
     if (key === currentKey) return;
 
     currentKey = key;
@@ -649,6 +659,6 @@
     }
   }).observe(document.body, { childList: true, subtree: true });
 
-  scan();
+  setTimeout(scan, 800);
   setInterval(scan, 2500);
 })();
