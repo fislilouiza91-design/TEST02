@@ -1,6 +1,6 @@
 /* ============================================
    Smart Shopper - Content Script
-   Small panel + delegates to fullscreen module
+   Small panel (no refresh button)
    ============================================ */
 (function () {
   'use strict';
@@ -39,16 +39,18 @@
   let pendingInterval = null;
 
   /* ============================================
-     SVG Icons (for small panel)
+     SVG Icons (Fluent style)
      ============================================ */
   const SVG_ICONS = {
-    all: '<svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor"><path d="M7 18c-1.1 0-1.99.9-1.99 2S5.9 22 7 22s2-.9 2-2-.9-2-2-2zM1 2v2h2l3.6 7.59-1.35 2.45c-.16.28-.25.61-.25.96 0 1.1.9 2 2 2h12v-2H7.42c-.14 0-.25-.11-.25-.25l.03-.12.9-1.63h7.45c.75 0 1.41-.41 1.75-1.03l3.58-6.49c.08-.14.12-.31.12-.48 0-.55-.45-1-1-1H5.21l-.94-2H1zm16 16c-1.1 0-1.99.9-1.99 2s.89 2 1.99 2 2-.9 2-2-.9-2-2-2z"/></svg>',
-    cheapest: '<svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor"><path d="M21.41 11.58l-9-9C12.05 2.22 11.55 2 11 2H4c-1.1 0-2 .9-2 2v7c0 .55.22 1.05.59 1.42l9 9c.36.36.86.58 1.41.58s1.05-.22 1.41-.59l7-7c.37-.36.59-.86.59-1.41s-.23-1.06-.59-1.42zM5.5 7C4.67 7 4 6.33 4 5.5S4.67 4 5.5 4 7 4.67 7 5.5 6.33 7 5.5 7z"/></svg>',
-    rated: '<svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>',
-    discount: '<svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor"><path d="M13.5.67s.74 2.65.74 4.8c0 2.06-1.35 3.73-3.41 3.73-2.07 0-3.63-1.67-3.63-3.73l.03-.36C5.21 7.51 4 10.62 4 14c0 4.42 3.58 8 8 8s8-3.58 8-8C20 8.61 17.41 3.8 13.5.67z"/></svg>',
-    selling: '<svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor"><path d="M16 6l2.29 2.29-4.88 4.88-4-4L2 16.59 3.41 18l6-6 4 4 6.3-6.29L22 12V6z"/></svg>',
-    plus: '<svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>',
-    expand: '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>'
+    all: '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>',
+    cheapest: '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 5 6.3 6.3a1 1 0 0 1 0 1.4L15 19"/><path d="M9 5 2.7 11.3a1 1 0 0 0 0 1.4L9 19"/></svg>',
+    rated: '<svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M12 2l2.9 6.9 7.1.6-5.4 4.6 1.6 7-6.2-3.7-6.2 3.7 1.6-7L2 9.5l7.1-.6z"/></svg>',
+    discount: '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41 13.42 20.58a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><circle cx="7" cy="7" r="1.5" fill="currentColor"/></svg>',
+    selling: '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8"/><path d="M14 7h7v7"/></svg>',
+    minimize: '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"/></svg>',
+    close: '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>',
+    expand: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>',
+    plus: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>'
   };
 
   /* ============================================
@@ -110,7 +112,7 @@
   }
 
   /* ============================================
-     ⭐ Expose shared utilities to fullscreen module
+     Expose shared utils to fullscreen module
      ============================================ */
   window.SS_Utils = {
     esc, num, soldNum, discNum, stars, formatPrice,
@@ -216,10 +218,8 @@
           <div class="ss-sub">${esc(T('panelSubtitle'))}</div>
         </div>
         <div class="ss-header-btns">
-          <button class="ss-hbtn" id="ss-expand" title="${esc(T('expand') || 'Expand')}">${SVG_ICONS.expand}</button>
-          <button class="ss-hbtn" id="ss-refresh" title="${esc(T('refresh'))}">⟳</button>
-          <button class="ss-hbtn" id="ss-minimize" title="${esc(T('minimize'))}">–</button>
-          <button class="ss-hbtn" id="ss-close" title="${esc(T('close'))}">✕</button>
+          <button class="ss-wbtn" id="ss-minimize" title="${esc(T('minimize'))}">${SVG_ICONS.minimize}</button>
+          <button class="ss-wbtn ss-wbtn-close" id="ss-close" title="${esc(T('close'))}">${SVG_ICONS.close}</button>
         </div>
       </div>
       <div class="ss-body" id="ss-body">
@@ -230,6 +230,10 @@
           <span class="ss-tab" data-i="3">${SVG_ICONS.discount}<span>${esc(T('tabBestDiscount'))}</span></span>
           <span class="ss-tab" data-i="4">${SVG_ICONS.selling}<span>${esc(T('tabBestSelling'))}</span></span>
         </div>
+        <button class="ss-expand-cta" id="ss-expand" title="${esc(T('expand') || 'Vue pleine page')}">
+          ${SVG_ICONS.expand}
+          <span>${esc(T('expand') || 'Vue pleine page')}</span>
+        </button>
         <div class="ss-progress" id="ss-progress"></div>
         <div class="ss-list" id="ss-list"></div>
         <div class="ss-footer" id="ss-footer"></div>
@@ -241,7 +245,6 @@
       const b = document.getElementById('ss-body');
       b.style.display = b.style.display === 'none' ? '' : 'none';
     };
-    document.getElementById('ss-refresh').onclick = () => { closed = false; currentKey = ''; scan(); };
     document.getElementById('ss-expand').onclick = openFullscreen;
     document.getElementById('ss-tabs').addEventListener('click', onTabClick);
     document.getElementById('ss-list').addEventListener('scroll', onScroll, { passive: true });
@@ -249,7 +252,7 @@
   }
 
   /* ============================================
-     ⭐ Open Fullscreen module
+     Open Fullscreen module
      ============================================ */
   function openFullscreen() {
     if (!window.SS_Fullscreen) {
@@ -257,7 +260,6 @@
       return;
     }
 
-    // Hide small panel temporarily
     const panel = document.getElementById(PANEL_ID);
     if (panel) panel.style.display = 'none';
 
@@ -270,7 +272,6 @@
       currencySymbol: currentCurrencySymbol,
       onLoadMore: () => onLoadMoreClick(),
       onTabChange: (newTab) => {
-        // Sync tab state with small panel
         activeTab = newTab;
         cachedSortedItems = [];
         renderedCount = 0;
@@ -279,7 +280,6 @@
         );
       },
       onRefresh: () => {
-        // Refresh from fullscreen
         currentKey = '';
         if (window.SS_Fullscreen) window.SS_Fullscreen.close();
         const p = document.getElementById(PANEL_ID);
@@ -287,7 +287,6 @@
         scan();
       },
       onClose: () => {
-        // Show small panel again
         const p = document.getElementById(PANEL_ID);
         if (p) p.style.display = '';
       }
@@ -585,7 +584,6 @@
 
         applySort();
 
-        // Update small panel
         const list = document.getElementById('ss-list');
         const scrollTop = list ? list.scrollTop : 0;
         if (list) {
@@ -596,7 +594,6 @@
           list.scrollTop = scrollTop;
         }
 
-        // Update fullscreen if open
         if (window.SS_Fullscreen && window.SS_Fullscreen.isOpen()) {
           window.SS_Fullscreen.updateItems(cachedItems);
         }
