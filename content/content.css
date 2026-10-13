@@ -124,6 +124,44 @@
     50% { opacity: 0.6; }
 }
 
+/* Progress bar */
+.ss-progress {
+    padding: 0 10px;
+    min-height: 0;
+    transition: all 0.3s;
+    background: #fff;
+    flex-shrink: 0;
+}
+.ss-progress:not(:empty) {
+    padding: 8px 10px;
+    border-bottom: 1px solid #f0f0f0;
+}
+.ss-progress-bar {
+    height: 4px;
+    background: #e8e8e8;
+    border-radius: 2px;
+    overflow: hidden;
+    margin-bottom: 6px;
+}
+.ss-progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #ff5e3a, #e62e04);
+    border-radius: 2px;
+    transition: width 0.4s ease;
+}
+.ss-progress-text {
+    font-size: 10px;
+    color: #888;
+    font-weight: 500;
+}
+.ss-progress-done {
+    font-size: 11px;
+    color: #00a854;
+    font-weight: 700;
+    padding: 6px 0;
+    display: inline-block;
+}
+
 .ss-list {
     overflow-y: auto;
     overflow-x: hidden;
@@ -131,7 +169,7 @@
     display: flex;
     flex-direction: column;
     gap: 6px;
-    max-height: calc(100vh - 260px);
+    max-height: calc(100vh - 300px);
     min-height: 200px;
     overscroll-behavior: contain;
     flex-grow: 1;
@@ -157,7 +195,14 @@
     cursor: pointer;
     width: 100%;
     overflow: hidden;
+    animation: ss-fade-in 0.3s ease;
 }
+
+@keyframes ss-fade-in {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
 .ss-card:hover { border-color: #ff4747; box-shadow: 0 2px 10px rgba(255, 71, 71, 0.1); }
 
 .ss-thumb-wrapper {
