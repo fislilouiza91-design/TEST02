@@ -1,473 +1,507 @@
 /* ============================================
-   Smart Shopper - Content Styles
-   Green (cheaper) + Red (higher) + Load More button
+   Smart Shopper - i18n Module
+   Full multi-language (38 languages)
+   With loadMore + noMoreResults
    ============================================ */
+(function () {
+  'use strict';
 
-* { box-sizing: border-box; }
+  const TRANSLATIONS = {
+    en: { panelTitle: 'Smart Shopper', panelSubtitle: 'Same product - other sellers ✓',
+      tabAll: 'All', tabCheapest: 'Cheapest', tabBestRated: 'Best rated',
+      tabBestDiscount: 'Best discount', tabBestSelling: 'Best selling',
+      noResults: 'No similar products found.', noReviews: 'No reviews',
+      soldSuffix: 'sold', viewAll: 'View all on AliExpress ↗',
+      scrollForMore: 'Scroll for more', errorContact: 'Cannot contact AliExpress. Try again.',
+      refresh: 'Refresh', minimize: 'Minimize', close: 'Close',
+      loading: 'Loading…', pageText: 'Page {p}/{t} · {n} products',
+      resultsText: '✓ {n} results', countingText: '⏳ {s}s',
+      loadMore: 'Load more', noMoreResults: 'No more results' },
 
-#ss-panel {
-    position: fixed;
-    top: 60px;
-    right: 15px;
-    width: 380px;
-    max-width: calc(100vw - 30px);
-    max-height: calc(100vh - 80px);
-    background: #ffffff;
-    border-radius: 10px;
-    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.18), 0 2px 6px rgba(0, 0, 0, 0.08);
-    z-index: 999999;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    direction: ltr;
-    user-select: none;
-    border: 1px solid rgba(0, 0, 0, 0.08);
-}
+    fr: { panelTitle: 'Smart Shopper', panelSubtitle: 'Même produit - autres vendeurs ✓',
+      tabAll: 'Tous', tabCheapest: 'Moins cher', tabBestRated: 'Mieux noté',
+      tabBestDiscount: 'Meilleure remise', tabBestSelling: 'Plus vendu',
+      noResults: 'Aucun produit similaire trouvé.', noReviews: 'Aucun avis',
+      soldSuffix: 'vendus', viewAll: 'Voir tout sur AliExpress ↗',
+      scrollForMore: 'Défilez pour plus', errorContact: 'Impossible de contacter AliExpress.',
+      refresh: 'Actualiser', minimize: 'Réduire', close: 'Fermer',
+      loading: 'Chargement…', pageText: 'Page {p}/{t} · {n} produits',
+      resultsText: '✓ {n} résultats', countingText: '⏳ {s}s',
+      loadMore: 'Plus de résultats', noMoreResults: 'Aucun autre résultat' },
 
-/* ============================================
-   Header
-   ============================================ */
-.ss-header {
-    display: flex;
-    align-items: center;
-    padding: 10px 12px;
-    background: #2b2b2b;
-    cursor: grab;
-    flex-shrink: 0;
-    color: white;
-    border-radius: 10px 10px 0 0;
-}
-.ss-header:active { cursor: grabbing; }
+    es: { panelTitle: 'Smart Shopper', panelSubtitle: 'Mismo producto - otros vendedores ✓',
+      tabAll: 'Todos', tabCheapest: 'Más barato', tabBestRated: 'Mejor valorado',
+      tabBestDiscount: 'Mejor descuento', tabBestSelling: 'Más vendido',
+      noResults: 'No se encontraron productos similares.', noReviews: 'Sin reseñas',
+      soldSuffix: 'vendidos', viewAll: 'Ver todo en AliExpress ↗',
+      scrollForMore: 'Desplázate para más', errorContact: 'No se puede contactar con AliExpress.',
+      refresh: 'Actualizar', minimize: 'Minimizar', close: 'Cerrar',
+      loading: 'Cargando…', pageText: 'Página {p}/{t} · {n} productos',
+      resultsText: '✓ {n} resultados', countingText: '⏳ {s}s',
+      loadMore: 'Cargar más', noMoreResults: 'No hay más resultados' },
 
-.ss-logo {
-    background: #ff4747;
-    color: white;
-    font-weight: 900;
-    width: 26px;
-    height: 26px;
-    border-radius: 6px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 15px;
-    margin-right: 8px;
-    flex-shrink: 0;
-}
+    de: { panelTitle: 'Smart Shopper', panelSubtitle: 'Gleiches Produkt - andere Verkäufer ✓',
+      tabAll: 'Alle', tabCheapest: 'Günstigste', tabBestRated: 'Bestbewertet',
+      tabBestDiscount: 'Bester Rabatt', tabBestSelling: 'Meistverkauft',
+      noResults: 'Keine ähnlichen Produkte gefunden.', noReviews: 'Keine Bewertungen',
+      soldSuffix: 'verkauft', viewAll: 'Alle auf AliExpress anzeigen ↗',
+      scrollForMore: 'Für mehr scrollen', errorContact: 'AliExpress kann nicht kontaktiert werden.',
+      refresh: 'Aktualisieren', minimize: 'Minimieren', close: 'Schließen',
+      loading: 'Laden…', pageText: 'Seite {p}/{t} · {n} Produkte',
+      resultsText: '✓ {n} Ergebnisse', countingText: '⏳ {s}s',
+      loadMore: 'Mehr laden', noMoreResults: 'Keine weiteren Ergebnisse' },
 
-.ss-titles { flex-grow: 1; min-width: 0; overflow: hidden; }
-.ss-header .ss-title { font-size: 13px; font-weight: 700; color: #fff; line-height: 1.2; }
-.ss-sub { font-size: 9.5px; color: rgba(255, 255, 255, 0.65); margin-top: 1px; }
-.ss-header-btns { display: flex; gap: 2px; flex-shrink: 0; }
+    it: { panelTitle: 'Smart Shopper', panelSubtitle: 'Stesso prodotto - altri venditori ✓',
+      tabAll: 'Tutti', tabCheapest: 'Più economico', tabBestRated: 'Meglio valutato',
+      tabBestDiscount: 'Miglior sconto', tabBestSelling: 'Più venduto',
+      noResults: 'Nessun prodotto simile trovato.', noReviews: 'Nessuna recensione',
+      soldSuffix: 'venduti', viewAll: 'Vedi tutto su AliExpress ↗',
+      scrollForMore: 'Scorri per altro', errorContact: 'Impossibile contattare AliExpress.',
+      refresh: 'Aggiorna', minimize: 'Riduci', close: 'Chiudi',
+      loading: 'Caricamento…', pageText: 'Pagina {p}/{t} · {n} prodotti',
+      resultsText: '✓ {n} risultati', countingText: '⏳ {s}s',
+      loadMore: 'Carica altri', noMoreResults: 'Nessun altro risultato' },
 
-.ss-hbtn {
-    background: transparent;
-    border: none;
-    cursor: pointer;
-    font-size: 13px;
-    color: rgba(255, 255, 255, 0.75);
-    padding: 5px 7px;
-    border-radius: 4px;
-    transition: background 0.2s, color 0.2s;
-    line-height: 1;
-    font-weight: 600;
-}
-.ss-hbtn:hover { background: rgba(255, 255, 255, 0.18); color: #fff; }
+    pt: { panelTitle: 'Smart Shopper', panelSubtitle: 'Mesmo produto - outros vendedores ✓',
+      tabAll: 'Todos', tabCheapest: 'Mais barato', tabBestRated: 'Melhor avaliado',
+      tabBestDiscount: 'Melhor desconto', tabBestSelling: 'Mais vendido',
+      noResults: 'Nenhum produto similar encontrado.', noReviews: 'Sem avaliações',
+      soldSuffix: 'vendidos', viewAll: 'Ver tudo no AliExpress ↗',
+      scrollForMore: 'Role para mais', errorContact: 'Não é possível contatar o AliExpress.',
+      refresh: 'Atualizar', minimize: 'Minimizar', close: 'Fechar',
+      loading: 'Carregando…', pageText: 'Página {p}/{t} · {n} produtos',
+      resultsText: '✓ {n} resultados', countingText: '⏳ {s}s',
+      loadMore: 'Carregar mais', noMoreResults: 'Sem mais resultados' },
 
-/* ============================================
-   Body
-   ============================================ */
-.ss-body {
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    flex-grow: 1;
-    background: #fff;
-    min-height: 0;
-}
+    ru: { panelTitle: 'Smart Shopper', panelSubtitle: 'Тот же товар - другие продавцы ✓',
+      tabAll: 'Все', tabCheapest: 'Дешевле', tabBestRated: 'Лучший рейтинг',
+      tabBestDiscount: 'Лучшая скидка', tabBestSelling: 'Хит продаж',
+      noResults: 'Похожие товары не найдены.', noReviews: 'Нет отзывов',
+      soldSuffix: 'продано', viewAll: 'Показать все на AliExpress ↗',
+      scrollForMore: 'Прокрутите', errorContact: 'Не удаётся связаться с AliExpress.',
+      refresh: 'Обновить', minimize: 'Свернуть', close: 'Закрыть',
+      loading: 'Загрузка…', pageText: 'Стр. {p}/{t} · {n} товаров',
+      resultsText: '✓ {n} результатов', countingText: '⏳ {s}с',
+      loadMore: 'Загрузить ещё', noMoreResults: 'Больше нет результатов' },
 
-/* ============================================
-   Tabs
-   ============================================ */
-.ss-tabs {
-    display: flex;
-    flex-wrap: wrap;
-    padding: 8px 10px;
-    gap: 5px;
-    background: #fff;
-    border-bottom: 1px solid #f0f0f0;
-    flex-shrink: 0;
-}
+    ar: { panelTitle: 'Smart Shopper', panelSubtitle: 'نفس المنتج - بائعون آخرون ✓',
+      tabAll: 'الكل', tabCheapest: 'الأرخص', tabBestRated: 'الأعلى تقييماً',
+      tabBestDiscount: 'أفضل خصم', tabBestSelling: 'الأكثر مبيعاً',
+      noResults: 'لم يتم العثور على منتجات مشابهة.', noReviews: 'لا توجد مراجعات',
+      soldSuffix: 'مبيعاً', viewAll: 'عرض الكل على AliExpress ↗',
+      scrollForMore: 'اسحب للمزيد', errorContact: 'تعذّر الاتصال بـ AliExpress.',
+      refresh: 'تحديث', minimize: 'تصغير', close: 'إغلاق',
+      loading: 'جارٍ التحميل…', pageText: 'صفحة {p}/{t} · {n} منتجات',
+      resultsText: '✓ {n} نتيجة', countingText: '⏳ {s} ثانية',
+      loadMore: 'المزيد', noMoreResults: 'لا مزيد من النتائج' },
 
-.ss-tab {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    padding: 5px 10px;
-    font-size: 10.5px;
-    color: #555;
-    cursor: pointer;
-    border-radius: 16px;
-    transition: all 0.2s;
-    font-weight: 600;
-    background: #f7f7f7;
-    border: 1px solid #e5e5e5;
-    white-space: nowrap;
-    user-select: none;
-}
+    he: { panelTitle: 'Smart Shopper', panelSubtitle: 'אותו מוצר - מוכרים אחרים ✓',
+      tabAll: 'הכל', tabCheapest: 'הזול ביותר', tabBestRated: 'המדורג ביותר',
+      tabBestDiscount: 'ההנחה הטובה ביותר', tabBestSelling: 'הנמכר ביותר',
+      noResults: 'לא נמצאו מוצרים דומים.', noReviews: 'אין ביקורות',
+      soldSuffix: 'נמכרו', viewAll: 'הצג הכל ב-AliExpress ↗',
+      scrollForMore: 'גלול לעוד', errorContact: 'לא ניתן ליצור קשר עם AliExpress.',
+      refresh: 'רענן', minimize: 'מזער', close: 'סגור',
+      loading: 'טוען…', pageText: 'עמוד {p}/{t} · {n} מוצרים',
+      resultsText: '✓ {n} תוצאות', countingText: '⏳ {s}שנ',
+      loadMore: 'טען עוד', noMoreResults: 'אין עוד תוצאות' },
 
-.ss-tab svg {
-    flex-shrink: 0;
-    opacity: 0.85;
-    display: block;
-}
+    ja: { panelTitle: 'Smart Shopper', panelSubtitle: '同じ商品 - 別の販売者 ✓',
+      tabAll: 'すべて', tabCheapest: '最安値', tabBestRated: '最高評価',
+      tabBestDiscount: '最大割引', tabBestSelling: 'ベストセラー',
+      noResults: '類似商品が見つかりませんでした。', noReviews: 'レビューなし',
+      soldSuffix: '販売済み', viewAll: 'AliExpressですべて表示 ↗',
+      scrollForMore: 'スクロールして表示', errorContact: 'AliExpressに接続できません。',
+      refresh: '更新', minimize: '最小化', close: '閉じる',
+      loading: '読み込み中…', pageText: 'ページ {p}/{t} · {n} 商品',
+      resultsText: '✓ {n} 件', countingText: '⏳ {s}秒',
+      loadMore: 'もっと見る', noMoreResults: 'これ以上ありません' },
 
-.ss-tab span { line-height: 1; }
+    ko: { panelTitle: 'Smart Shopper', panelSubtitle: '같은 상품 - 다른 판매자 ✓',
+      tabAll: '전체', tabCheapest: '최저가', tabBestRated: '최고 평점',
+      tabBestDiscount: '최대 할인', tabBestSelling: '베스트셀러',
+      noResults: '유사 상품을 찾을 수 없습니다.', noReviews: '리뷰 없음',
+      soldSuffix: '판매됨', viewAll: 'AliExpress에서 모두 보기 ↗',
+      scrollForMore: '더 보려면 스크롤', errorContact: 'AliExpress에 연결할 수 없습니다.',
+      refresh: '새로고침', minimize: '최소화', close: '닫기',
+      loading: '로딩 중…', pageText: '페이지 {p}/{t} · {n}개 상품',
+      resultsText: '✓ {n}개 결과', countingText: '⏳ {s}초',
+      loadMore: '더 보기', noMoreResults: '더 이상 없음' },
 
-.ss-tab.active {
-    color: #fff;
-    background: #1a1a1a;
-    border-color: #1a1a1a;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
-}
+    th: { panelTitle: 'Smart Shopper', panelSubtitle: 'สินค้าเดียวกัน - ผู้ขายรายอื่น ✓',
+      tabAll: 'ทั้งหมด', tabCheapest: 'ถูกที่สุด', tabBestRated: 'คะแนนสูงสุด',
+      tabBestDiscount: 'ส่วนลดดีที่สุด', tabBestSelling: 'ขายดีที่สุด',
+      noResults: 'ไม่พบสินค้าที่คล้ายกัน', noReviews: 'ไม่มีความคิดเห็น',
+      soldSuffix: 'ขายแล้ว', viewAll: 'ดูทั้งหมดบน AliExpress ↗',
+      scrollForMore: 'เลื่อนเพื่อดูเพิ่ม', errorContact: 'ไม่สามารถติดต่อ AliExpress',
+      refresh: 'รีเฟรช', minimize: 'ย่อ', close: 'ปิด',
+      loading: 'กำลังโหลด…', pageText: 'หน้า {p}/{t} · {n} สินค้า',
+      resultsText: '✓ {n} ผลลัพธ์', countingText: '⏳ {s}วิ',
+      loadMore: 'โหลดเพิ่มเติม', noMoreResults: 'ไม่มีผลลัพธ์เพิ่มเติม' },
 
-.ss-tab.active svg { opacity: 1; }
+    vi: { panelTitle: 'Smart Shopper', panelSubtitle: 'Cùng sản phẩm - người bán khác ✓',
+      tabAll: 'Tất cả', tabCheapest: 'Rẻ nhất', tabBestRated: 'Đánh giá cao',
+      tabBestDiscount: 'Giảm giá tốt nhất', tabBestSelling: 'Bán chạy nhất',
+      noResults: 'Không tìm thấy sản phẩm tương tự.', noReviews: 'Không có đánh giá',
+      soldSuffix: 'đã bán', viewAll: 'Xem tất cả trên AliExpress ↗',
+      scrollForMore: 'Cuộn để xem thêm', errorContact: 'Không thể liên hệ AliExpress.',
+      refresh: 'Làm mới', minimize: 'Thu nhỏ', close: 'Đóng',
+      loading: 'Đang tải…', pageText: 'Trang {p}/{t} · {n} sản phẩm',
+      resultsText: '✓ {n} kết quả', countingText: '⏳ {s}s',
+      loadMore: 'Tải thêm', noMoreResults: 'Không còn kết quả' },
 
-.ss-tab:hover:not(.active):not(.ss-tab-counting) {
-    background: #efefef;
-    border-color: #d0d0d0;
-}
+    tr: { panelTitle: 'Smart Shopper', panelSubtitle: 'Aynı ürün - diğer satıcılar ✓',
+      tabAll: 'Tümü', tabCheapest: 'En ucuz', tabBestRated: 'En iyi puan',
+      tabBestDiscount: 'En iyi indirim', tabBestSelling: 'En çok satan',
+      noResults: 'Benzer ürün bulunamadı.', noReviews: 'Yorum yok',
+      soldSuffix: 'satıldı', viewAll: "AliExpress'te tümünü gör ↗",
+      scrollForMore: 'Daha fazla için kaydırın', errorContact: 'AliExpress ile iletişim kurulamıyor.',
+      refresh: 'Yenile', minimize: 'Küçült', close: 'Kapat',
+      loading: 'Yükleniyor…', pageText: 'Sayfa {p}/{t} · {n} ürün',
+      resultsText: '✓ {n} sonuç', countingText: '⏳ {s}s',
+      loadMore: 'Daha fazla', noMoreResults: 'Başka sonuç yok' },
 
-.ss-tab.ss-tab-counting {
-    background: #fff8e1;
-    border-color: #ffcc80;
-    color: #e65100;
-    cursor: wait;
-    pointer-events: none;
-    animation: ss-pulse 1.2s ease-in-out infinite;
-}
+    pl: { panelTitle: 'Smart Shopper', panelSubtitle: 'Ten sam produkt - inni sprzedawcy ✓',
+      tabAll: 'Wszystkie', tabCheapest: 'Najtańsze', tabBestRated: 'Najlepiej oceniane',
+      tabBestDiscount: 'Najlepsza zniżka', tabBestSelling: 'Najczęściej kupowane',
+      noResults: 'Nie znaleziono podobnych produktów.', noReviews: 'Brak opinii',
+      soldSuffix: 'sprzedanych', viewAll: 'Zobacz wszystko na AliExpress ↗',
+      scrollForMore: 'Przewiń', errorContact: 'Nie można skontaktować się z AliExpress.',
+      refresh: 'Odśwież', minimize: 'Minimalizuj', close: 'Zamknij',
+      loading: 'Ładowanie…', pageText: 'Strona {p}/{t} · {n} produktów',
+      resultsText: '✓ {n} wyników', countingText: '⏳ {s}s',
+      loadMore: 'Pokaż więcej', noMoreResults: 'Brak więcej wyników' },
 
-@keyframes ss-pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.6; }
-}
+    nl: { panelTitle: 'Smart Shopper', panelSubtitle: 'Hetzelfde product - andere verkopers ✓',
+      tabAll: 'Alle', tabCheapest: 'Goedkoopste', tabBestRated: 'Best beoordeeld',
+      tabBestDiscount: 'Beste korting', tabBestSelling: 'Best verkocht',
+      noResults: 'Geen vergelijkbare producten gevonden.', noReviews: 'Geen beoordelingen',
+      soldSuffix: 'verkocht', viewAll: 'Alles bekijken op AliExpress ↗',
+      scrollForMore: 'Scroll voor meer', errorContact: 'Kan geen contact maken met AliExpress.',
+      refresh: 'Vernieuwen', minimize: 'Minimaliseren', close: 'Sluiten',
+      loading: 'Laden…', pageText: 'Pagina {p}/{t} · {n} producten',
+      resultsText: '✓ {n} resultaten', countingText: '⏳ {s}s',
+      loadMore: 'Meer laden', noMoreResults: 'Geen resultaten meer' },
 
-/* ============================================
-   Progress bar
-   ============================================ */
-.ss-progress {
-    padding: 0 10px;
-    min-height: 0;
-    transition: all 0.3s;
-    background: #fff;
-    flex-shrink: 0;
-}
-.ss-progress:not(:empty) {
-    padding: 8px 10px;
-    border-bottom: 1px solid #f0f0f0;
-}
-.ss-progress-bar {
-    height: 4px;
-    background: #e8e8e8;
-    border-radius: 2px;
-    overflow: hidden;
-    margin-bottom: 6px;
-}
-.ss-progress-fill {
-    height: 100%;
-    background: linear-gradient(90deg, #ff5e3a, #e62e04);
-    border-radius: 2px;
-    transition: width 0.4s ease;
-}
-.ss-progress-text {
-    font-size: 10px;
-    color: #888;
-    font-weight: 500;
-}
-.ss-progress-done {
-    font-size: 11px;
-    color: #00a854;
-    font-weight: 700;
-    padding: 6px 0;
-    display: inline-block;
-}
+    id: { panelTitle: 'Smart Shopper', panelSubtitle: 'Produk sama - penjual lain ✓',
+      tabAll: 'Semua', tabCheapest: 'Termurah', tabBestRated: 'Rating terbaik',
+      tabBestDiscount: 'Diskon terbaik', tabBestSelling: 'Terlaris',
+      noResults: 'Tidak ada produk serupa ditemukan.', noReviews: 'Tidak ada ulasan',
+      soldSuffix: 'terjual', viewAll: 'Lihat semua di AliExpress ↗',
+      scrollForMore: 'Gulir untuk lebih', errorContact: 'Tidak dapat menghubungi AliExpress.',
+      refresh: 'Segarkan', minimize: 'Perkecil', close: 'Tutup',
+      loading: 'Memuat…', pageText: 'Halaman {p}/{t} · {n} produk',
+      resultsText: '✓ {n} hasil', countingText: '⏳ {s}d',
+      loadMore: 'Muat lebih banyak', noMoreResults: 'Tidak ada hasil lagi' },
 
-/* ============================================
-   List
-   ============================================ */
-.ss-list {
-    overflow-y: auto;
-    overflow-x: hidden;
-    padding: 6px 8px;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    max-height: calc(100vh - 300px);
-    min-height: 200px;
-    overscroll-behavior: contain;
-    flex-grow: 1;
-}
-.ss-list::-webkit-scrollbar { width: 5px; }
-.ss-list::-webkit-scrollbar-track { background: transparent; }
-.ss-list::-webkit-scrollbar-thumb { background-color: #ccc; border-radius: 3px; }
-.ss-list::-webkit-scrollbar-thumb:hover { background-color: #999; }
+    ms: { panelTitle: 'Smart Shopper', panelSubtitle: 'Produk sama - penjual lain ✓',
+      tabAll: 'Semua', tabCheapest: 'Termurah', tabBestRated: 'Penilaian terbaik',
+      tabBestDiscount: 'Diskaun terbaik', tabBestSelling: 'Paling laris',
+      noResults: 'Tiada produk serupa ditemui.', noReviews: 'Tiada ulasan',
+      soldSuffix: 'terjual', viewAll: 'Lihat semua di AliExpress ↗',
+      scrollForMore: 'Tatal untuk lebih', errorContact: 'Tidak dapat menghubungi AliExpress.',
+      refresh: 'Segar semula', minimize: 'Kecilkan', close: 'Tutup',
+      loading: 'Memuatkan…', pageText: 'Halaman {p}/{t} · {n} produk',
+      resultsText: '✓ {n} hasil', countingText: '⏳ {s}s',
+      loadMore: 'Muat lagi', noMoreResults: 'Tiada hasil lagi' },
 
-/* ============================================
-   Product Card
-   ============================================ */
-.ss-card {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    background: #fff;
-    border: 1px solid #e8e8e8;
-    border-radius: 8px;
-    padding: 8px;
-    position: relative;
-    text-decoration: none;
-    color: inherit;
-    transition: all 0.2s ease;
-    min-height: 72px;
-    cursor: pointer;
-    width: 100%;
-    overflow: hidden;
-    animation: ss-fade-in 0.3s ease;
-}
+    hi: { panelTitle: 'Smart Shopper', panelSubtitle: 'एक ही उत्पाद - अन्य विक्रेता ✓',
+      tabAll: 'सभी', tabCheapest: 'सबसे सस्ता', tabBestRated: 'सर्वाधिक रेटेड',
+      tabBestDiscount: 'सर्वश्रेष्ठ छूट', tabBestSelling: 'सर्वाधिक बिकने वाला',
+      noResults: 'कोई समान उत्पाद नहीं मिला।', noReviews: 'कोई समीक्षा नहीं',
+      soldSuffix: 'बिके', viewAll: 'AliExpress पर सभी देखें ↗',
+      scrollForMore: 'और देखने के लिए स्क्रॉल करें', errorContact: 'AliExpress से संपर्क नहीं हो पा रहा।',
+      refresh: 'रिफ्रेश', minimize: 'मिनिमाइज़', close: 'बंद',
+      loading: 'लोड हो रहा है…', pageText: 'पृष्ठ {p}/{t} · {n} उत्पाद',
+      resultsText: '✓ {n} परिणाम', countingText: '⏳ {s}से',
+      loadMore: 'और लोड करें', noMoreResults: 'और परिणाम नहीं' },
 
-@keyframes ss-fade-in {
-    from { opacity: 0; transform: translateY(4px); }
-    to { opacity: 1; transform: translateY(0); }
-}
+    bn: { panelTitle: 'Smart Shopper', panelSubtitle: 'একই পণ্য - অন্যান্য বিক্রেতা ✓',
+      tabAll: 'সব', tabCheapest: 'সবচেয়ে সস্তা', tabBestRated: 'সর্বোচ্চ রেটেড',
+      tabBestDiscount: 'সেরা ছাড়', tabBestSelling: 'সর্বাধিক বিক্রীত',
+      noResults: 'কোনো অনুরূপ পণ্য পাওয়া যায়নি।', noReviews: 'কোনো পর্যালোচনা নেই',
+      soldSuffix: 'বিক্রি', viewAll: 'AliExpress-এ সব দেখুন ↗',
+      scrollForMore: 'আরও দেখতে স্ক্রল করুন', errorContact: 'AliExpress-এ যোগাযোগ করা যাচ্ছে না।',
+      refresh: 'রিফ্রেশ', minimize: 'ছোট করুন', close: 'বন্ধ',
+      loading: 'লোড হচ্ছে…', pageText: 'পৃষ্ঠা {p}/{t} · {n} পণ্য',
+      resultsText: '✓ {n} ফলাফল', countingText: '⏳ {s}সে',
+      loadMore: 'আরও লোড করুন', noMoreResults: 'আর কোনো ফলাফল নেই' },
 
-.ss-card:hover { border-color: #ff4747; box-shadow: 0 2px 10px rgba(255, 71, 71, 0.1); }
+    ur: { panelTitle: 'Smart Shopper', panelSubtitle: 'ایک ہی پروڈکٹ - دوسرے بیچنے والے ✓',
+      tabAll: 'تمام', tabCheapest: 'سب سے سستا', tabBestRated: 'بہترین درجہ',
+      tabBestDiscount: 'بہترین رعایت', tabBestSelling: 'سب سے زیادہ فروخت',
+      noResults: 'کوئی مشابہ پروڈکٹ نہیں ملا۔', noReviews: 'کوئی جائزہ نہیں',
+      soldSuffix: 'فروخت', viewAll: 'AliExpress پر سب دیکھیں ↗',
+      scrollForMore: 'مزید کے لیے اسکرول کریں', errorContact: 'AliExpress سے رابطہ نہیں ہو سکتا۔',
+      refresh: 'ریفریش', minimize: 'چھوٹا کریں', close: 'بند',
+      loading: 'لوڈ ہو رہا ہے…', pageText: 'صفحہ {p}/{t} · {n} پروڈکٹس',
+      resultsText: '✓ {n} نتائج', countingText: '⏳ {s}سیکنڈ',
+      loadMore: 'مزید لوڈ کریں', noMoreResults: 'مزید نتائج نہیں' },
 
-.ss-thumb-wrapper {
-    flex-shrink: 0;
-    width: 62px;
-    height: 62px;
-    border-radius: 6px;
-    overflow: hidden;
-    background: #fafafa;
-    border: 1px solid #f0f0f0;
-}
-.ss-thumb { width: 100%; height: 100%; object-fit: cover; display: block; }
-.ss-thumb-empty { display: flex; align-items: center; justify-content: center; font-size: 24px; color: #ccc; }
+    fa: { panelTitle: 'Smart Shopper', panelSubtitle: 'همان محصول - فروشندگان دیگر ✓',
+      tabAll: 'همه', tabCheapest: 'ارزان‌ترین', tabBestRated: 'بهترین امتیاز',
+      tabBestDiscount: 'بهترین تخفیف', tabBestSelling: 'پرفروش‌ترین',
+      noResults: 'محصول مشابهی یافت نشد.', noReviews: 'بدون نظر',
+      soldSuffix: 'فروخته شده', viewAll: 'مشاهده همه در AliExpress ↗',
+      scrollForMore: 'برای بیشتر اسکرول کنید', errorContact: 'امکان ارتباط با AliExpress نیست.',
+      refresh: 'بازنشانی', minimize: 'کوچک', close: 'بستن',
+      loading: 'در حال بارگذاری…', pageText: 'صفحه {p}/{t} · {n} محصول',
+      resultsText: '✓ {n} نتیجه', countingText: '⏳ {s}ث',
+      loadMore: 'بیشتر بارگذاری کنید', noMoreResults: 'نتیجه دیگری نیست' },
 
-.ss-card-content {
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    gap: 6px;
-    overflow: hidden;
-}
+    uk: { panelTitle: 'Smart Shopper', panelSubtitle: 'Той самий товар - інші продавці ✓',
+      tabAll: 'Усі', tabCheapest: 'Найдешевші', tabBestRated: 'Найкращий рейтинг',
+      tabBestDiscount: 'Найкраща знижка', tabBestSelling: 'Хіт продажів',
+      noResults: 'Схожих товарів не знайдено.', noReviews: 'Немає відгуків',
+      soldSuffix: 'продано', viewAll: 'Показати все на AliExpress ↗',
+      scrollForMore: 'Прокрутіть', errorContact: 'Не вдається зв\'язатися з AliExpress.',
+      refresh: 'Оновити', minimize: 'Згорнути', close: 'Закрити',
+      loading: 'Завантаження…', pageText: 'Стор. {p}/{t} · {n} товарів',
+      resultsText: '✓ {n} результатів', countingText: '⏳ {s}с',
+      loadMore: 'Завантажити ще', noMoreResults: 'Більше немає результатів' },
 
-.ss-card-title {
-    font-size: 11.5px;
-    color: #222;
-    line-height: 1.3;
-    font-weight: 500;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-    word-break: break-word;
-    max-height: 30px;
-}
+    el: { panelTitle: 'Smart Shopper', panelSubtitle: 'Ίδιο προϊόν - άλλοι πωλητές ✓',
+      tabAll: 'Όλα', tabCheapest: 'Φθηνότερα', tabBestRated: 'Καλύτερα αξιολογημένα',
+      tabBestDiscount: 'Καλύτερη έκπτωση', tabBestSelling: 'Περισσότερο πουλημένα',
+      noResults: 'Δεν βρέθηκαν παρόμοια προϊόντα.', noReviews: 'Χωρίς κριτικές',
+      soldSuffix: 'πωλήθηκαν', viewAll: 'Δείτε όλα στο AliExpress ↗',
+      scrollForMore: 'Κύλιση για περισσότερα', errorContact: 'Δεν είναι δυνατή η επικοινωνία με το AliExpress.',
+      refresh: 'Ανανέωση', minimize: 'Ελαχιστοποίηση', close: 'Κλείσιμο',
+      loading: 'Φόρτωση…', pageText: 'Σελίδα {p}/{t} · {n} προϊόντα',
+      resultsText: '✓ {n} αποτελέσματα', countingText: '⏳ {s}δ',
+      loadMore: 'Φόρτωση περισσότερων', noMoreResults: 'Δεν υπάρχουν άλλα αποτελέσματα' },
 
-.ss-card-meta {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 10.5px;
-    color: #666;
-    line-height: 1.2;
-    overflow: hidden;
-    white-space: nowrap;
-}
+    cs: { panelTitle: 'Smart Shopper', panelSubtitle: 'Stejný produkt - jiní prodejci ✓',
+      tabAll: 'Vše', tabCheapest: 'Nejlevnější', tabBestRated: 'Nejlépe hodnocené',
+      tabBestDiscount: 'Nejlepší sleva', tabBestSelling: 'Nejprodávanější',
+      noResults: 'Nebyly nalezeny podobné produkty.', noReviews: 'Žádné recenze',
+      soldSuffix: 'prodáno', viewAll: 'Zobrazit vše na AliExpress ↗',
+      scrollForMore: 'Posuňte pro více', errorContact: 'Nelze kontaktovat AliExpress.',
+      refresh: 'Obnovit', minimize: 'Minimalizovat', close: 'Zavřít',
+      loading: 'Načítání…', pageText: 'Strana {p}/{t} · {n} produktů',
+      resultsText: '✓ {n} výsledků', countingText: '⏳ {s}s',
+      loadMore: 'Načíst další', noMoreResults: 'Žádné další výsledky' },
 
-.ss-stars { color: #ffa726; font-size: 12px; letter-spacing: -0.5px; line-height: 1; flex-shrink: 0; }
-.ss-rating-num { color: #444; font-weight: 700; font-size: 10.5px; flex-shrink: 0; }
-.ss-sold { color: #888; font-size: 10px; flex-shrink: 0; }
-.ss-no-info { color: #bbb; font-size: 10px; font-style: italic; }
+    sv: { panelTitle: 'Smart Shopper', panelSubtitle: 'Samma produkt - andra säljare ✓',
+      tabAll: 'Alla', tabCheapest: 'Billigaste', tabBestRated: 'Bäst betyg',
+      tabBestDiscount: 'Bästa rabatten', tabBestSelling: 'Bästsäljande',
+      noResults: 'Inga liknande produkter hittades.', noReviews: 'Inga recensioner',
+      soldSuffix: 'sålda', viewAll: 'Visa alla på AliExpress ↗',
+      scrollForMore: 'Rulla för mer', errorContact: 'Kan inte kontakta AliExpress.',
+      refresh: 'Uppdatera', minimize: 'Minimera', close: 'Stäng',
+      loading: 'Laddar…', pageText: 'Sida {p}/{t} · {n} produkter',
+      resultsText: '✓ {n} resultat', countingText: '⏳ {s}s',
+      loadMore: 'Ladda mer', noMoreResults: 'Inga fler resultat' },
 
-/* ============================================
-   Discount Box - Green (default)
-   ============================================ */
-.ss-discount-box {
-    flex-shrink: 0;
-    background: #e8f8f0;
-    border: 1px solid #c6ecd8;
-    border-radius: 6px;
-    padding: 6px 8px;
-    min-width: 72px;
-    max-width: 90px;
-    text-align: center;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    gap: 2px;
-}
+    da: { panelTitle: 'Smart Shopper', panelSubtitle: 'Samme produkt - andre sælgere ✓',
+      tabAll: 'Alle', tabCheapest: 'Billigste', tabBestRated: 'Bedst bedømt',
+      tabBestDiscount: 'Bedste rabat', tabBestSelling: 'Bedst sælgende',
+      noResults: 'Ingen lignende produkter fundet.', noReviews: 'Ingen anmeldelser',
+      soldSuffix: 'solgt', viewAll: 'Se alle på AliExpress ↗',
+      scrollForMore: 'Rul for mere', errorContact: 'Kan ikke kontakte AliExpress.',
+      refresh: 'Opdater', minimize: 'Minimer', close: 'Luk',
+      loading: 'Indlæser…', pageText: 'Side {p}/{t} · {n} produkter',
+      resultsText: '✓ {n} resultater', countingText: '⏳ {s}s',
+      loadMore: 'Indlæs mere', noMoreResults: 'Ingen flere resultater' },
 
-.ss-price-main {
-    font-size: 13px;
-    font-weight: 800;
-    color: #00a854;
-    line-height: 1.1;
-    letter-spacing: -0.3px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
+    no: { panelTitle: 'Smart Shopper', panelSubtitle: 'Samme produkt - andre selgere ✓',
+      tabAll: 'Alle', tabCheapest: 'Billigste', tabBestRated: 'Best vurdert',
+      tabBestDiscount: 'Beste rabatt', tabBestSelling: 'Bestselgende',
+      noResults: 'Ingen lignende produkter funnet.', noReviews: 'Ingen anmeldelser',
+      soldSuffix: 'solgt', viewAll: 'Se alle på AliExpress ↗',
+      scrollForMore: 'Rull for mer', errorContact: 'Kan ikke kontakte AliExpress.',
+      refresh: 'Oppdater', minimize: 'Minimer', close: 'Lukk',
+      loading: 'Laster…', pageText: 'Side {p}/{t} · {n} produkter',
+      resultsText: '✓ {n} resultater', countingText: '⏳ {s}s',
+      loadMore: 'Last mer', noMoreResults: 'Ingen flere resultater' },
 
-.ss-discount-label {
-    font-size: 9.5px;
-    font-weight: 700;
-    color: #00a854;
-    line-height: 1.1;
-    white-space: nowrap;
-}
+    fi: { panelTitle: 'Smart Shopper', panelSubtitle: 'Sama tuote - muut myyjät ✓',
+      tabAll: 'Kaikki', tabCheapest: 'Halvimmat', tabBestRated: 'Parhaiten arvioidut',
+      tabBestDiscount: 'Paras alennus', tabBestSelling: 'Myydyimmät',
+      noResults: 'Vastaavia tuotteita ei löytynyt.', noReviews: 'Ei arvosteluja',
+      soldSuffix: 'myyty', viewAll: 'Näytä kaikki AliExpressissä ↗',
+      scrollForMore: 'Vieritä lisää', errorContact: 'AliExpressiin ei saada yhteyttä.',
+      refresh: 'Päivitä', minimize: 'Pienennä', close: 'Sulje',
+      loading: 'Ladataan…', pageText: 'Sivu {p}/{t} · {n} tuotetta',
+      resultsText: '✓ {n} tulosta', countingText: '⏳ {s}s',
+      loadMore: 'Lataa lisää', noMoreResults: 'Ei enempää tuloksia' },
 
-/* ============================================
-   Red (higher price than current product)
-   ============================================ */
-.ss-discount-box.ss-higher-price {
-    background: #fff0ee;
-    border-color: #ffd4cc;
-}
-.ss-discount-box.ss-higher-price .ss-price-main {
-    color: #e62e04;
-}
-.ss-discount-box.ss-higher-price .ss-discount-label {
-    color: #e62e04;
-}
+    hu: { panelTitle: 'Smart Shopper', panelSubtitle: 'Ugyanaz a termék - más eladók ✓',
+      tabAll: 'Összes', tabCheapest: 'Legolcsóbb', tabBestRated: 'Legjobbra értékelt',
+      tabBestDiscount: 'Legjobb kedvezmény', tabBestSelling: 'Legkelendőbb',
+      noResults: 'Nem található hasonló termék.', noReviews: 'Nincs értékelés',
+      soldSuffix: 'eladva', viewAll: 'Összes megtekintése az AliExpress-en ↗',
+      scrollForMore: 'Görgessen tovább', errorContact: 'Nem sikerül kapcsolatba lépni az AliExpress-szel.',
+      refresh: 'Frissítés', minimize: 'Kicsinyítés', close: 'Bezárás',
+      loading: 'Betöltés…', pageText: '{p}/{t}. oldal · {n} termék',
+      resultsText: '✓ {n} találat', countingText: '⏳ {s}mp',
+      loadMore: 'Több betöltése', noMoreResults: 'Nincs több találat' },
 
-/* ============================================
-   Messages
-   ============================================ */
-.ss-msg {
-    text-align: center;
-    padding: 40px 20px;
-    font-size: 13px;
-    color: #888;
-    line-height: 1.6;
-    font-weight: 500;
-}
-.ss-msg-icon { font-size: 40px; margin-bottom: 10px; display: block; opacity: 0.5; }
+    ro: { panelTitle: 'Smart Shopper', panelSubtitle: 'Același produs - alți vânzători ✓',
+      tabAll: 'Toate', tabCheapest: 'Cele mai ieftine', tabBestRated: 'Cele mai bine evaluate',
+      tabBestDiscount: 'Cea mai bună reducere', tabBestSelling: 'Cele mai vândute',
+      noResults: 'Nu s-au găsit produse similare.', noReviews: 'Fără recenzii',
+      soldSuffix: 'vândute', viewAll: 'Vezi tot pe AliExpress ↗',
+      scrollForMore: 'Derulează pentru mai mult', errorContact: 'Nu se poate contacta AliExpress.',
+      refresh: 'Reîmprospătează', minimize: 'Minimizează', close: 'Închide',
+      loading: 'Se încarcă…', pageText: 'Pagina {p}/{t} · {n} produse',
+      resultsText: '✓ {n} rezultate', countingText: '⏳ {s}s',
+      loadMore: 'Încarcă mai multe', noMoreResults: 'Nu mai sunt rezultate' },
 
-/* ============================================
-   Footer
-   ============================================ */
-.ss-footer {
-    padding: 10px 8px;
-    text-align: center;
-    border-top: 1px solid #f0f0f0;
-    background: #fafafa;
-    flex-shrink: 0;
-    border-radius: 0 0 10px 10px;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    align-items: center;
-}
-.ss-footer-link {
-    font-size: 11px;
-    color: #2f80ed;
-    text-decoration: none;
-    font-weight: 600;
-    display: inline-block;
-    padding: 5px 12px;
-    background: #f0f7ff;
-    border-radius: 16px;
-    transition: all 0.2s;
-}
-.ss-footer-link:hover { background: #e0efff; }
-.ss-loading-more { font-size: 9.5px; color: #999; margin-top: 2px; text-align: center; font-weight: 500; }
+    bg: { panelTitle: 'Smart Shopper', panelSubtitle: 'Същият продукт - други продавачи ✓',
+      tabAll: 'Всички', tabCheapest: 'Най-евтини', tabBestRated: 'Най-добре оценени',
+      tabBestDiscount: 'Най-добра отстъпка', tabBestSelling: 'Най-продавани',
+      noResults: 'Не са намерени подобни продукти.', noReviews: 'Няма отзиви',
+      soldSuffix: 'продадени', viewAll: 'Вижте всички в AliExpress ↗',
+      scrollForMore: 'Превъртете за повече', errorContact: 'Не може да се свърже с AliExpress.',
+      refresh: 'Опресни', minimize: 'Минимизирай', close: 'Затвори',
+      loading: 'Зареждане…', pageText: 'Страница {p}/{t} · {n} продукта',
+      resultsText: '✓ {n} резултата', countingText: '⏳ {s}с',
+      loadMore: 'Зареди още', noMoreResults: 'Няма повече резултати' },
 
-/* ============================================
-   Load More button
-   ============================================ */
-.ss-load-more-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    background: linear-gradient(135deg, #ff5e3a, #e62e04);
-    color: #fff;
-    border: none;
-    border-radius: 20px;
-    padding: 8px 18px;
-    font-size: 11.5px;
-    font-weight: 700;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    margin-top: 2px;
-    font-family: inherit;
-}
-.ss-load-more-btn:hover:not(:disabled) {
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(230, 46, 4, 0.35);
-}
-.ss-load-more-btn:active:not(:disabled) {
-    transform: translateY(0);
-}
-.ss-load-more-btn:disabled {
-    cursor: wait;
-    opacity: 0.75;
-}
-.ss-load-more-btn svg { flex-shrink: 0; }
+    hr: { panelTitle: 'Smart Shopper', panelSubtitle: 'Isti proizvod - drugi prodavači ✓',
+      tabAll: 'Sve', tabCheapest: 'Najjeftinije', tabBestRated: 'Najbolje ocijenjeno',
+      tabBestDiscount: 'Najbolji popust', tabBestSelling: 'Najprodavanije',
+      noResults: 'Nisu pronađeni slični proizvodi.', noReviews: 'Nema recenzija',
+      soldSuffix: 'prodano', viewAll: 'Pogledaj sve na AliExpressu ↗',
+      scrollForMore: 'Pomaknite za više', errorContact: 'Ne može se kontaktirati AliExpress.',
+      refresh: 'Osvježi', minimize: 'Minimiziraj', close: 'Zatvori',
+      loading: 'Učitavanje…', pageText: 'Stranica {p}/{t} · {n} proizvoda',
+      resultsText: '✓ {n} rezultata', countingText: '⏳ {s}s',
+      loadMore: 'Učitaj više', noMoreResults: 'Nema više rezultata' },
 
-.ss-load-more-loading {
-    background: #f0f0f0 !important;
-    color: #888 !important;
-}
-.ss-load-more-loading:hover { transform: none !important; box-shadow: none !important; }
+    sk: { panelTitle: 'Smart Shopper', panelSubtitle: 'Rovnaký produkt - iní predajcovia ✓',
+      tabAll: 'Všetko', tabCheapest: 'Najlacnejšie', tabBestRated: 'Najlepšie hodnotené',
+      tabBestDiscount: 'Najlepšia zľava', tabBestSelling: 'Najpredávanejšie',
+      noResults: 'Nenašli sa podobné produkty.', noReviews: 'Žiadne recenzie',
+      soldSuffix: 'predané', viewAll: 'Zobraziť všetko na AliExpress ↗',
+      scrollForMore: 'Posuňte pre viac', errorContact: 'Nedá sa kontaktovať AliExpress.',
+      refresh: 'Obnoviť', minimize: 'Minimalizovať', close: 'Zavrieť',
+      loading: 'Načítava sa…', pageText: 'Strana {p}/{t} · {n} produktov',
+      resultsText: '✓ {n} výsledkov', countingText: '⏳ {s}s',
+      loadMore: 'Načítať viac', noMoreResults: 'Žiadne ďalšie výsledky' },
 
-.ss-spinner {
-    display: inline-block;
-    width: 12px;
-    height: 12px;
-    border: 2px solid rgba(0,0,0,0.15);
-    border-top-color: #888;
-    border-radius: 50%;
-    animation: ss-spin 0.7s linear infinite;
-}
-@keyframes ss-spin {
-    to { transform: rotate(360deg); }
-}
+    sl: { panelTitle: 'Smart Shopper', panelSubtitle: 'Isti izdelek - drugi prodajalci ✓',
+      tabAll: 'Vse', tabCheapest: 'Najcenejše', tabBestRated: 'Najbolje ocenjeno',
+      tabBestDiscount: 'Najboljši popust', tabBestSelling: 'Najbolje prodajano',
+      noResults: 'Ni podobnih izdelkov.', noReviews: 'Ni ocen',
+      soldSuffix: 'prodano', viewAll: 'Poglej vse na AliExpress ↗',
+      scrollForMore: 'Pomaknite za več', errorContact: 'Ni mogoče kontaktirati AliExpress.',
+      refresh: 'Osveži', minimize: 'Minimiziraj', close: 'Zapri',
+      loading: 'Nalaganje…', pageText: 'Stran {p}/{t} · {n} izdelkov',
+      resultsText: '✓ {n} rezultatov', countingText: '⏳ {s}s',
+      loadMore: 'Naloži več', noMoreResults: 'Ni več rezultatov' },
 
-.ss-no-more {
-    display: block;
-    font-size: 10.5px;
-    color: #999;
-    font-weight: 500;
-    padding: 6px 0;
-    text-align: center;
-}
+    lt: { panelTitle: 'Smart Shopper', panelSubtitle: 'Tas pats produktas - kiti pardavėjai ✓',
+      tabAll: 'Visi', tabCheapest: 'Pigiausi', tabBestRated: 'Geriausiai įvertinti',
+      tabBestDiscount: 'Geriausia nuolaida', tabBestSelling: 'Perkamiausi',
+      noResults: 'Panašių produktų nerasta.', noReviews: 'Nėra atsiliepimų',
+      soldSuffix: 'parduota', viewAll: 'Peržiūrėti viską „AliExpress“ ↗',
+      scrollForMore: 'Slinkite daugiau', errorContact: 'Nepavyksta susisiekti su „AliExpress“.',
+      refresh: 'Atnaujinti', minimize: 'Sumažinti', close: 'Uždaryti',
+      loading: 'Įkeliama…', pageText: 'Psl. {p}/{t} · {n} produktų',
+      resultsText: '✓ {n} rezultatų', countingText: '⏳ {s}s',
+      loadMore: 'Įkelti daugiau', noMoreResults: 'Daugiau rezultatų nėra' },
 
-/* ============================================
-   Skeleton
-   ============================================ */
-.skel {
-    background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
-    background-size: 200% 100%;
-    animation: ss-skel 1.5s infinite;
-    border-radius: 4px;
-    pointer-events: none;
-}
-.skel.line { height: 9px; width: 100%; margin-bottom: 5px; }
-.skel.line.short { width: 60%; }
-.skel.ss-thumb-wrapper { width: 62px; height: 62px; }
-.skel.ss-discount-box { width: 72px; height: 40px; }
+    lv: { panelTitle: 'Smart Shopper', panelSubtitle: 'Tas pats produkts - citi pārdevēji ✓',
+      tabAll: 'Visi', tabCheapest: 'Lētākie', tabBestRated: 'Vislabāk novērtētie',
+      tabBestDiscount: 'Labākā atlaide', tabBestSelling: 'Pārdotākie',
+      noResults: 'Līdzīgi produkti nav atrasti.', noReviews: 'Nav atsauksmju',
+      soldSuffix: 'pārdots', viewAll: 'Skatīt visu AliExpress ↗',
+      scrollForMore: 'Ritiniet vairāk', errorContact: 'Nevar sazināties ar AliExpress.',
+      refresh: 'Atsvaidzināt', minimize: 'Minimizēt', close: 'Aizvērt',
+      loading: 'Ielādē…', pageText: 'Lpp. {p}/{t} · {n} produkti',
+      resultsText: '✓ {n} rezultāti', countingText: '⏳ {s}s',
+      loadMore: 'Ielādēt vairāk', noMoreResults: 'Vairāk rezultātu nav' },
 
-@keyframes ss-skel {
-    0% { background-position: 200% 0; }
-    100% { background-position: -200% 0; }
-}
+    et: { panelTitle: 'Smart Shopper', panelSubtitle: 'Sama toode - teised müüjad ✓',
+      tabAll: 'Kõik', tabCheapest: 'Odavaimad', tabBestRated: 'Parimalt hinnatud',
+      tabBestDiscount: 'Parim allahindlus', tabBestSelling: 'Enimmüüdud',
+      noResults: 'Sarnaseid tooteid ei leitud.', noReviews: 'Arvustusi pole',
+      soldSuffix: 'müüdud', viewAll: 'Vaata kõiki AliExpressis ↗',
+      scrollForMore: 'Keri rohkem', errorContact: 'Ei saa AliExpressiga ühendust.',
+      refresh: 'Värskenda', minimize: 'Minimeeri', close: 'Sulge',
+      loading: 'Laadimine…', pageText: 'Lk {p}/{t} · {n} toodet',
+      resultsText: '✓ {n} tulemust', countingText: '⏳ {s}s',
+      loadMore: 'Laadi rohkem', noMoreResults: 'Rohkem tulemusi pole' }
+  };
 
-/* ============================================
-   RTL Support
-   ============================================ */
-#ss-panel[dir="rtl"] { direction: rtl; }
-#ss-panel[dir="rtl"] .ss-title,
-#ss-panel[dir="rtl"] .ss-sub { text-align: right; }
+  /* ============================================
+     كشف اللغة
+     ============================================ */
+  function detectLang() {
+    try {
+      const ck = document.cookie.match(/(?:^|;\s*)aep_usuc_f=([^;]+)/);
+      if (ck) {
+        const params = new URLSearchParams(decodeURIComponent(ck[1]));
+        const bLocale = params.get('b_locale') || params.get('site');
+        if (bLocale) {
+          const code = bLocale.split('_')[0].toLowerCase();
+          if (TRANSLATIONS[code]) {
+            console.log('[Smart Shopper] Lang from cookie:', code);
+            return code;
+          }
+        }
+      }
+    } catch (e) {}
+
+    const htmlLang = (document.documentElement.lang || '').toLowerCase().split('-')[0];
+    if (htmlLang && TRANSLATIONS[htmlLang]) {
+      console.log('[Smart Shopper] Lang from html:', htmlLang);
+      return htmlLang;
+    }
+
+    try {
+      const params = new URLSearchParams(location.search);
+      const langParam = params.get('lang');
+      if (langParam && TRANSLATIONS[langParam]) {
+        console.log('[Smart Shopper] Lang from query:', langParam);
+        return langParam;
+      }
+    } catch (e) {}
+
+    const host = location.hostname || '';
+    const sub = host.split('.')[0];
+    const validSubs = ['fr','es','ru','pt','de','it','ar','ko','ja','th','vi','tr','pl','nl','he','id','ms','hi'];
+    if (validSubs.includes(sub)) {
+      console.log('[Smart Shopper] Lang from subdomain:', sub);
+      return sub;
+    }
+
+    const navLang = (navigator.language || 'en').split('-')[0].toLowerCase();
+    if (TRANSLATIONS[navLang]) {
+      console.log('[Smart Shopper] Lang from browser:', navLang);
+      return navLang;
+    }
+
+    console.log('[Smart Shopper] Lang default: en');
+    return 'en';
+  }
+
+  const currentLang = detectLang();
+  console.log('[Smart Shopper] Language detected:', currentLang);
+
+  const RTL_LANGS = ['ar', 'he', 'ur', 'fa'];
+  const isRTL = RTL_LANGS.includes(currentLang);
+
+  window.SS_I18N = {
+    lang: currentLang,
+    isRTL: isRTL,
+    t(key, vars) {
+      const dict = TRANSLATIONS[currentLang] || TRANSLATIONS.en;
+      let str = dict[key] || TRANSLATIONS.en[key] || key;
+      if (vars) {
+        for (const k in vars) {
+          str = str.replace(new RegExp('\\{' + k + '\\}', 'g'), vars[k]);
+        }
+      }
+      return str;
+    }
+  };
+
+  if (isRTL) {
+    const style = document.createElement('style');
+    style.textContent = '#ss-panel { direction: rtl; } #ss-panel .ss-title, #ss-panel .ss-sub { text-align: right; }';
+    document.documentElement.appendChild(style);
+  }
+})();
