@@ -1,8 +1,6 @@
 /* ============================================
    Smart Shopper - i18n Module
-   Lightweight translation system
    ============================================ */
-
 (function () {
   'use strict';
 
@@ -42,20 +40,32 @@
       refresh: 'Refresh',
       minimize: 'Minimize',
       close: 'Close'
+    },
+    ar: {
+      panelTitle: 'Smart Shopper',
+      panelSubtitle: 'نفس المنتج - بائعون آخرون ✓',
+      tabAll: '🛍️ الكل',
+      tabCheapest: '💰 الأرخص',
+      tabBestRated: '⭐ الأعلى تقييماً',
+      tabBestDiscount: '🔥 أفضل خصم',
+      tabBestSelling: '📈 الأكثر مبيعاً',
+      noResults: 'لم يتم العثور على منتجات مشابهة.',
+      noReviews: 'لا توجد مراجعات',
+      soldSuffix: 'مبيعاً',
+      viewAll: 'عرض الكل على AliExpress ↗',
+      scrollForMore: 'اسحب للمزيد',
+      errorContact: 'تعذّر الاتصال بـ AliExpress. حاول مرة أخرى.',
+      refresh: 'تحديث',
+      minimize: 'تصغير',
+      close: 'إغلاق'
     }
   };
 
-  /**
-   * كشف اللغة الحالية من المتصفح
-   */
   function detectLang() {
     const lang = (navigator.language || 'fr').split('-')[0].toLowerCase();
     return TRANSLATIONS[lang] ? lang : 'fr';
   }
 
-  /**
-   * كائن الترجمة الذي يُستخدم في content.js
-   */
   window.SS_I18N = {
     lang: detectLang(),
     t(key) {
