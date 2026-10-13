@@ -1,6 +1,6 @@
 /* ============================================
    Smart Shopper - Content Styles
-   Green (cheaper) + Red (higher) - No gray
+   Green (cheaper) + Red (higher) + Load More button
    ============================================ */
 
 * { box-sizing: border-box; }
@@ -293,7 +293,7 @@
 .ss-no-info { color: #bbb; font-size: 10px; font-style: italic; }
 
 /* ============================================
-   Discount Box - 🟢 Green (default: price <= current)
+   Discount Box - Green (default)
    ============================================ */
 .ss-discount-box {
     flex-shrink: 0;
@@ -330,7 +330,7 @@
 }
 
 /* ============================================
-   🔴 Red (price > current product price)
+   Red (higher price than current product)
    ============================================ */
 .ss-discount-box.ss-higher-price {
     background: #fff0ee;
@@ -360,12 +360,16 @@
    Footer
    ============================================ */
 .ss-footer {
-    padding: 8px;
+    padding: 10px 8px;
     text-align: center;
     border-top: 1px solid #f0f0f0;
     background: #fafafa;
     flex-shrink: 0;
     border-radius: 0 0 10px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    align-items: center;
 }
 .ss-footer-link {
     font-size: 11px;
@@ -379,7 +383,67 @@
     transition: all 0.2s;
 }
 .ss-footer-link:hover { background: #e0efff; }
-.ss-loading-more { font-size: 9.5px; color: #999; margin-top: 5px; text-align: center; font-weight: 500; }
+.ss-loading-more { font-size: 9.5px; color: #999; margin-top: 2px; text-align: center; font-weight: 500; }
+
+/* ============================================
+   Load More button
+   ============================================ */
+.ss-load-more-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: linear-gradient(135deg, #ff5e3a, #e62e04);
+    color: #fff;
+    border: none;
+    border-radius: 20px;
+    padding: 8px 18px;
+    font-size: 11.5px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    margin-top: 2px;
+    font-family: inherit;
+}
+.ss-load-more-btn:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(230, 46, 4, 0.35);
+}
+.ss-load-more-btn:active:not(:disabled) {
+    transform: translateY(0);
+}
+.ss-load-more-btn:disabled {
+    cursor: wait;
+    opacity: 0.75;
+}
+.ss-load-more-btn svg { flex-shrink: 0; }
+
+.ss-load-more-loading {
+    background: #f0f0f0 !important;
+    color: #888 !important;
+}
+.ss-load-more-loading:hover { transform: none !important; box-shadow: none !important; }
+
+.ss-spinner {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border: 2px solid rgba(0,0,0,0.15);
+    border-top-color: #888;
+    border-radius: 50%;
+    animation: ss-spin 0.7s linear infinite;
+}
+@keyframes ss-spin {
+    to { transform: rotate(360deg); }
+}
+
+.ss-no-more {
+    display: block;
+    font-size: 10.5px;
+    color: #999;
+    font-weight: 500;
+    padding: 6px 0;
+    text-align: center;
+}
 
 /* ============================================
    Skeleton
