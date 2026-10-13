@@ -1,6 +1,6 @@
 /* ============================================
    Smart Shopper - Content Styles
-   Green (cheaper) + Red (higher) + Load More button
+   Fluent Windows 11 style + Expand CTA + Load More
    ============================================ */
 
 * { box-sizing: border-box; }
@@ -58,21 +58,52 @@
 .ss-titles { flex-grow: 1; min-width: 0; overflow: hidden; }
 .ss-header .ss-title { font-size: 13px; font-weight: 700; color: #fff; line-height: 1.2; }
 .ss-sub { font-size: 9.5px; color: rgba(255, 255, 255, 0.65); margin-top: 1px; }
-.ss-header-btns { display: flex; gap: 2px; flex-shrink: 0; }
 
-.ss-hbtn {
-    background: transparent;
-    border: none;
-    cursor: pointer;
-    font-size: 13px;
-    color: rgba(255, 255, 255, 0.75);
-    padding: 5px 7px;
-    border-radius: 4px;
-    transition: background 0.2s, color 0.2s;
-    line-height: 1;
-    font-weight: 600;
+/* ============================================
+   Window Control Buttons (Windows 11 Fluent)
+   ============================================ */
+.ss-header-btns {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+    flex-shrink: 0;
 }
-.ss-hbtn:hover { background: rgba(255, 255, 255, 0.18); color: #fff; }
+
+.ss-wbtn {
+    width: 30px;
+    height: 30px;
+    border: none;
+    background: rgba(255, 255, 255, 0.08);
+    color: rgba(255, 255, 255, 0.9);
+    cursor: pointer;
+    border-radius: 6px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    transition: background 0.15s ease, color 0.15s ease, transform 0.1s ease;
+    font-family: inherit;
+    flex-shrink: 0;
+}
+
+.ss-wbtn svg {
+    display: block;
+    pointer-events: none;
+}
+
+.ss-wbtn:hover {
+    background: rgba(255, 255, 255, 0.2);
+    color: #fff;
+}
+
+.ss-wbtn:active {
+    transform: scale(0.92);
+}
+
+.ss-wbtn-close:hover {
+    background: #e81123;
+    color: #fff;
+}
 
 /* ============================================
    Body
@@ -87,13 +118,13 @@
 }
 
 /* ============================================
-   Tabs
+   Tabs (Fluent style)
    ============================================ */
 .ss-tabs {
     display: flex;
     flex-wrap: wrap;
-    padding: 8px 10px;
-    gap: 5px;
+    padding: 10px 10px 6px;
+    gap: 6px;
     background: #fff;
     border-bottom: 1px solid #f0f0f0;
     flex-shrink: 0;
@@ -102,40 +133,51 @@
 .ss-tab {
     display: inline-flex;
     align-items: center;
-    gap: 5px;
-    padding: 5px 10px;
-    font-size: 10.5px;
+    gap: 6px;
+    padding: 7px 12px;
+    font-size: 11px;
     color: #555;
     cursor: pointer;
-    border-radius: 16px;
-    transition: all 0.2s;
+    border-radius: 8px;
+    transition: all 0.2s ease;
     font-weight: 600;
     background: #f7f7f7;
-    border: 1px solid #e5e5e5;
+    border: 1px solid transparent;
     white-space: nowrap;
     user-select: none;
+    position: relative;
 }
 
 .ss-tab svg {
     flex-shrink: 0;
-    opacity: 0.85;
     display: block;
+    color: #888;
+    transition: color 0.2s, transform 0.2s;
 }
 
 .ss-tab span { line-height: 1; }
 
-.ss-tab.active {
-    color: #fff;
-    background: #1a1a1a;
-    border-color: #1a1a1a;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
-}
-
-.ss-tab.active svg { opacity: 1; }
-
 .ss-tab:hover:not(.active):not(.ss-tab-counting) {
     background: #efefef;
-    border-color: #d0d0d0;
+    border-color: #e0e0e0;
+    transform: translateY(-1px);
+}
+
+.ss-tab:hover:not(.active) svg {
+    transform: scale(1.1);
+    color: #444;
+}
+
+.ss-tab.active {
+    color: #fff;
+    background: linear-gradient(135deg, #2b2b2b, #1a1a1a);
+    border-color: #1a1a1a;
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.25);
+    transform: translateY(-1px);
+}
+
+.ss-tab.active svg {
+    color: #fff;
 }
 
 .ss-tab.ss-tab-counting {
@@ -147,13 +189,88 @@
     animation: ss-pulse 1.2s ease-in-out infinite;
 }
 
+.ss-tab.ss-tab-counting svg {
+    color: #e65100;
+}
+
 @keyframes ss-pulse {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.6; }
 }
 
 /* ============================================
-   Progress bar
+   Expand CTA Button (Icon + Text)
+   ============================================ */
+.ss-expand-cta {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: calc(100% - 20px);
+    margin: 8px 10px;
+    padding: 11px 16px;
+    background: linear-gradient(135deg, #ff5e3a 0%, #e62e04 100%);
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 800;
+    font-family: inherit;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    position: relative;
+    box-shadow: 0 4px 14px rgba(230, 46, 4, 0.4);
+    animation: ss-cta-pulse 2s ease-in-out infinite;
+    transition: transform 0.2s, box-shadow 0.2s;
+    overflow: hidden;
+}
+
+.ss-expand-cta svg {
+    display: block;
+    flex-shrink: 0;
+    width: 14px;
+    height: 14px;
+}
+
+.ss-expand-cta::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+    animation: ss-cta-shine 3s ease-in-out infinite;
+    pointer-events: none;
+}
+
+.ss-expand-cta:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 22px rgba(230, 46, 4, 0.55);
+    animation: none;
+}
+
+.ss-expand-cta:active {
+    transform: translateY(0) scale(0.98);
+}
+
+@keyframes ss-cta-pulse {
+    0%, 100% {
+        box-shadow: 0 4px 14px rgba(230, 46, 4, 0.4);
+    }
+    50% {
+        box-shadow: 0 4px 14px rgba(230, 46, 4, 0.4), 0 0 0 8px rgba(230, 46, 4, 0.1);
+    }
+}
+
+@keyframes ss-cta-shine {
+    0% { left: -100%; }
+    60%, 100% { left: 100%; }
+}
+
+/* ============================================
+   Progress
    ============================================ */
 .ss-progress {
     padding: 0 10px;
@@ -166,24 +283,7 @@
     padding: 8px 10px;
     border-bottom: 1px solid #f0f0f0;
 }
-.ss-progress-bar {
-    height: 4px;
-    background: #e8e8e8;
-    border-radius: 2px;
-    overflow: hidden;
-    margin-bottom: 6px;
-}
-.ss-progress-fill {
-    height: 100%;
-    background: linear-gradient(90deg, #ff5e3a, #e62e04);
-    border-radius: 2px;
-    transition: width 0.4s ease;
-}
-.ss-progress-text {
-    font-size: 10px;
-    color: #888;
-    font-weight: 500;
-}
+.ss-progress-text { font-size: 10px; color: #888; font-weight: 500; }
 .ss-progress-done {
     font-size: 11px;
     color: #00a854;
@@ -207,7 +307,7 @@
     overscroll-behavior: contain;
     flex-grow: 1;
 }
-.ss-list::-webkit-scrollbar { width: 5px; }
+.ss-list::-webkit-scrollbar { width: 6px; }
 .ss-list::-webkit-scrollbar-track { background: transparent; }
 .ss-list::-webkit-scrollbar-thumb { background-color: #ccc; border-radius: 3px; }
 .ss-list::-webkit-scrollbar-thumb:hover { background-color: #999; }
@@ -293,7 +393,7 @@
 .ss-no-info { color: #bbb; font-size: 10px; font-style: italic; }
 
 /* ============================================
-   Discount Box - Green (default)
+   Discount Boxes
    ============================================ */
 .ss-discount-box {
     flex-shrink: 0;
@@ -329,19 +429,12 @@
     white-space: nowrap;
 }
 
-/* ============================================
-   Red (higher price than current product)
-   ============================================ */
 .ss-discount-box.ss-higher-price {
     background: #fff0ee;
     border-color: #ffd4cc;
 }
-.ss-discount-box.ss-higher-price .ss-price-main {
-    color: #e62e04;
-}
-.ss-discount-box.ss-higher-price .ss-discount-label {
-    color: #e62e04;
-}
+.ss-discount-box.ss-higher-price .ss-price-main { color: #e62e04; }
+.ss-discount-box.ss-higher-price .ss-discount-label { color: #e62e04; }
 
 /* ============================================
    Messages
@@ -371,57 +464,55 @@
     gap: 6px;
     align-items: center;
 }
-.ss-footer-link {
-    font-size: 11px;
-    color: #2f80ed;
-    text-decoration: none;
-    font-weight: 600;
-    display: inline-block;
-    padding: 5px 12px;
-    background: #f0f7ff;
-    border-radius: 16px;
-    transition: all 0.2s;
-}
-.ss-footer-link:hover { background: #e0efff; }
+
 .ss-loading-more { font-size: 9.5px; color: #999; margin-top: 2px; text-align: center; font-weight: 500; }
 
 /* ============================================
-   Load More button
+   Load More Button (Fluent)
    ============================================ */
 .ss-load-more-btn {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    background: linear-gradient(135deg, #ff5e3a, #e62e04);
+    gap: 8px;
+    background: linear-gradient(135deg, #ff5e3a 0%, #e62e04 100%);
     color: #fff;
     border: none;
-    border-radius: 20px;
-    padding: 8px 18px;
-    font-size: 11.5px;
+    border-radius: 22px;
+    padding: 10px 22px;
+    font-size: 12px;
     font-weight: 700;
     cursor: pointer;
     transition: all 0.2s ease;
-    margin-top: 2px;
     font-family: inherit;
+    box-shadow: 0 3px 12px rgba(230, 46, 4, 0.3);
 }
+
+.ss-load-more-btn svg {
+    display: block;
+    flex-shrink: 0;
+    color: #fff;
+}
+
 .ss-load-more-btn:hover:not(:disabled) {
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(230, 46, 4, 0.35);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 18px rgba(230, 46, 4, 0.5);
 }
+
 .ss-load-more-btn:active:not(:disabled) {
     transform: translateY(0);
 }
+
 .ss-load-more-btn:disabled {
     cursor: wait;
     opacity: 0.75;
 }
-.ss-load-more-btn svg { flex-shrink: 0; }
 
 .ss-load-more-loading {
     background: #f0f0f0 !important;
     color: #888 !important;
+    box-shadow: none !important;
 }
-.ss-load-more-loading:hover { transform: none !important; box-shadow: none !important; }
+.ss-load-more-loading:hover { transform: none !important; }
 
 .ss-spinner {
     display: inline-block;
@@ -432,9 +523,7 @@
     border-radius: 50%;
     animation: ss-spin 0.7s linear infinite;
 }
-@keyframes ss-spin {
-    to { transform: rotate(360deg); }
-}
+@keyframes ss-spin { to { transform: rotate(360deg); } }
 
 .ss-no-more {
     display: block;
