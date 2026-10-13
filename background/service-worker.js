@@ -1,24 +1,10 @@
 /* ============================================
    Smart Shopper - Background Service Worker
-   Batch fetch: 1 page per click (~60 items)
-   Max total: 200 items
+   Fetching via Cloudflare Worker
    ============================================ */
 
-const ITEMS_PER_BATCH = 60;      // صفحة واحدة ≈ 60 منتجاً
-const MAX_TOTAL_ITEMS = 200;     // الحد الأقصى الكلي
-const MIN_DELAY_MS = 2000;
-const MAX_DELAY_MS = 4500;
-const COOLDOWN_MS = 60000;
-
-const USER_AGENTS = [
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:127.0) Gecko/20100101 Firefox/127.0',
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15'
-];
-
-let blockedUntil = 0;
+// 🔴 مهم: غيّر هذا الرابط إلى رابط Worker الخاص بك
+const WORKER_URL = 'https://smart-shopper.smailsuit11.workers.dev';
 
 /* ============================================
    Listener
@@ -27,7 +13,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (!msg) return;
 
   if (msg.type === 'SMART_SEARCH') {
-    handleInitialSearch(msg, sender, sendResponse);
+    handleSearch(msg, sender, sendResponse);
     return true;
   }
 
@@ -42,46 +28,55 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 /* ============================================
    البحث الأولي - صفحة واحدة
    ============================================ */
-async function handleInitialSearch(msg, sender, sendResponse) {
+async function handleSearch(msg, sender, sendResponse) {
   const tabId = sender.tab && sender.tab.id;
   const q = encodeURIComponent((msg.title || '').slice(0, 90));
   const baseUrl = 'https://www.aliexpress.com/wholesale?SearchText=' + q + '&catId=0';
 
-  console.log('[Smart Shopper BG] === INITIAL SEARCH ===');
-
-  if (await checkBlockCooldown()) {
-    sendResponse({ ok: false, error: 'cooldown' });
-    return;
-  }
+  console.log('[Smart Shopper BG] === INITIAL SEARCH (page 1) ===');
 
   try {
-    const url = baseUrl + '&page=1';
-    const result = await fetchPageSecure(url, 1);
+    const items = await fetchPage(baseUrl, 1);
 
-    if (result.blocked) {
-      sendResponse({ ok: false, error: 'blocked' });
-      return;
+    const seenIds = new Set();
+    const newItems = [];
+    for (const it of items) {
+      if (!it || !it.id || seenIds.has(it.id)) continue;
+      seenIds.add(it.id);
+      newItems.push(it);
     }
 
-    const items = result.items.slice(0, ITEMS_PER_BATCH);
-    console.log('[Smart Shopper BG] Initial →', items.length, 'items');
+    const hasMore = newItems.length > 0;
+
+    console.log('[Smart Shopper BG] Page 1 →', newItems.length, 'items');
 
     sendResponse({
       ok: true,
-      items: items,
+      items: newItems,
       lastPage: 1,
-      hasMore: true,
-      totalItems: items.length,
+      hasMore: hasMore,
+      totalItems: newItems.length,
       searchUrl: baseUrl
     });
+
+    if (tabId) {
+      try {
+        chrome.tabs.sendMessage(tabId, {
+          type: 'SMART_SEARCH_DONE',
+          totalItems: newItems.length,
+          lastPage: 1,
+          hasMore: hasMore
+        });
+      } catch (e) {}
+    }
   } catch (e) {
-    console.error('[Smart Shopper BG] Initial search error:', e);
+    console.error('[Smart Shopper BG] Search error:', e);
     sendResponse({ ok: false, error: String(e) });
   }
 }
 
 /* ============================================
-   المزيد - صفحة واحدة إضافية
+   المزيد - الصفحة التالية
    ============================================ */
 async function handleLoadMore(msg, sender, sendResponse) {
   const q = encodeURIComponent((msg.title || '').slice(0, 90));
@@ -89,132 +84,82 @@ async function handleLoadMore(msg, sender, sendResponse) {
   const nextPage = Math.max(2, parseInt(msg.startPage) || 2);
   const existingIds = msg.existingIds || [];
 
-  console.log('[Smart Shopper BG] === LOAD MORE from page', nextPage, '===');
-  console.log('[Smart Shopper BG] Existing items:', existingIds.length);
-
-  if (await checkBlockCooldown()) {
-    sendResponse({ ok: false, error: 'cooldown', hasMore: true, lastPage: nextPage - 1 });
-    return;
-  }
+  console.log('[Smart Shopper BG] === LOAD MORE (page', nextPage, ') ===');
 
   try {
-    // 🔐 تأخير عشوائي قبل الجلب
-    const delay = randomDelay();
-    console.log('[Smart Shopper BG] Waiting', delay, 'ms...');
-    await sleep(delay);
+    const items = await fetchPage(baseUrl, nextPage);
 
-    const url = baseUrl + '&page=' + nextPage;
-    const result = await fetchPageSecure(url, nextPage);
-
-    if (result.blocked) {
-      sendResponse({ ok: false, error: 'blocked', hasMore: true, lastPage: nextPage - 1 });
-      return;
+    const seenIds = new Set(existingIds);
+    const newItems = [];
+    for (const it of items) {
+      if (!it || !it.id || seenIds.has(it.id)) continue;
+      seenIds.add(it.id);
+      newItems.push(it);
     }
 
-    // فلتر المكررات
-    const existingSet = new Set(existingIds);
-    const newItems = result.items.filter(it => it && it.id && !existingSet.has(it.id));
     const hasMore = newItems.length > 0;
 
-    console.log('[Smart Shopper BG] Page', nextPage, '→ +' + newItems.length, 'new items');
+    console.log('[Smart Shopper BG] Page', nextPage, '→', newItems.length, 'new items');
 
     sendResponse({
       ok: true,
       items: newItems,
       lastPage: nextPage,
-      hasMore: hasMore,
-      isLoadMore: true
+      hasMore: hasMore
     });
   } catch (e) {
     console.error('[Smart Shopper BG] Load more error:', e);
-    sendResponse({ ok: false, error: String(e) });
+    sendResponse({
+      ok: false,
+      error: String(e),
+      hasMore: false,
+      lastPage: nextPage - 1
+    });
   }
 }
 
 /* ============================================
-   جلب آمن
+   🔥 Fetch via Cloudflare Worker
    ============================================ */
-async function fetchPageSecure(url, page) {
-  const ua = USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
-
+async function fetchPage(baseUrl, page) {
   try {
-    console.log('[Smart Shopper BG] Fetching page', page);
+    const aliexpressUrl = baseUrl + '&page=' + page;
+    const workerEndpoint = `${WORKER_URL}/fetch?url=${encodeURIComponent(aliexpressUrl)}`;
 
-    const res = await fetch(url, {
-      credentials: 'include',
-      headers: {
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-        'Accept-Language': 'fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7',
-        'Cache-Control': 'no-cache',
-        'Pragma': 'no-cache',
-        'Referer': 'https://www.aliexpress.com/',
-        'User-Agent': ua,
-        'Sec-Ch-Ua': '"Chromium";v="126", "Not;A=Brand";v="24"',
-        'Sec-Ch-Ua-Mobile': '?0',
-        'Sec-Ch-Ua-Platform': '"Windows"',
-        'Sec-Fetch-Dest': 'document',
-        'Sec-Fetch-Mode': 'navigate',
-        'Sec-Fetch-Site': 'same-origin',
-        'Sec-Fetch-User': '?1',
-        'Upgrade-Insecure-Requests': '1'
-      },
-      redirect: 'follow'
-    });
+    console.log('[Smart Shopper BG] → Worker (page', page, ')');
 
-    console.log('[Smart Shopper BG] HTTP', res.status);
-
-    if (res.status === 403 || res.status === 429) {
-      console.warn('[Smart Shopper BG] ⚠️ HTTP', res.status, '- cooldown');
-      blockedUntil = Date.now() + COOLDOWN_MS;
-      return { blocked: true, items: [] };
-    }
+    const res = await fetch(workerEndpoint);
 
     if (!res.ok) {
-      return { blocked: false, items: [] };
+      console.warn('[Smart Shopper BG] Worker HTTP error:', res.status);
+      return [];
     }
+
+    const cacheStatus = res.headers.get('X-Cache') || '?';
+    const provider = res.headers.get('X-Provider') || '?';
+    console.log(`[Smart Shopper BG] ✅ Cache: ${cacheStatus} | Provider: ${provider}`);
 
     const html = await res.text();
     console.log('[Smart Shopper BG] HTML size:', html.length);
 
     if (html.length < 5000) {
-      console.warn('[Smart Shopper BG] ⚠️ HTML too small');
-      blockedUntil = Date.now() + COOLDOWN_MS;
-      return { blocked: true, items: [] };
-    }
-
-    if (html.includes('captcha') || html.includes('punish') || html.includes('Verification')) {
-      console.warn('[Smart Shopper BG] ⚠️ CAPTCHA detected');
-      blockedUntil = Date.now() + COOLDOWN_MS;
-      return { blocked: true, items: [] };
+      console.warn('[Smart Shopper BG] ⚠️ Small response (likely blocked)');
+      return [];
     }
 
     let items = parseItems(html);
     if (!items.length) items = fallbackIds(html);
 
-    return { blocked: false, items };
+    console.log('[Smart Shopper BG] Parsed', items.length, 'items from page', page);
+    return items;
   } catch (e) {
     console.warn('[Smart Shopper BG] Fetch error:', e.message);
-    return { blocked: false, items: [] };
+    return [];
   }
 }
 
 /* ============================================
-   أدوات
-   ============================================ */
-function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
-function randomDelay() { return MIN_DELAY_MS + Math.floor(Math.random() * (MAX_DELAY_MS - MIN_DELAY_MS)); }
-
-async function checkBlockCooldown() {
-  if (Date.now() < blockedUntil) {
-    const remaining = Math.ceil((blockedUntil - Date.now()) / 1000);
-    console.warn('[Smart Shopper BG] Cooldown:', remaining, 's remaining');
-    return true;
-  }
-  return false;
-}
-
-/* ============================================
-   استخراج المنتجات
+   Parse items from HTML
    ============================================ */
 function extractText(v) {
   if (v == null) return '';
