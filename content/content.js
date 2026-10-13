@@ -1,827 +1,371 @@
-/* ═══════════════════════════════════════════════════════
-   Smart Shopper — Content Script (v44 MEGA SORT)
-   + ترتيب النافذة: تطابق صورة → تشابه → أفضل سعر
-   ═══════════════════════════════════════════════════════ */
-
+/* ============================================
+   Smart Shopper - Content Script
+   With i18n support
+   ============================================ */
 (function () {
-  "use strict";
+  'use strict';
+  if (window.__smartShopper) return;
+  window.__smartShopper = true;
 
-  if (window.__SMART_SHOPPER_LOADED__) return;
-  window.__SMART_SHOPPER_LOADED__ = true;
+  const PANEL_ID = 'ss-panel';
+  const BATCH_SIZE = 15;
+  const ESTIMATED_SEARCH_TIME = 9000;
 
-  const T = typeof SS_T === "function" ? SS_T : (k) => k;
-  const LANG = typeof SS_LANG !== "undefined" ? SS_LANG : "en";
-  const IS_RTL = typeof SS_RTL !== "undefined" ? SS_RTL : false;
+  // اللغة (مع default إلى الفرنسية)
+  const T = (key) => (window.SS_I18N ? window.SS_I18N.t(key) : key);
 
-  console.log(`[Smart Shopper] v44 MEGA SORT | Lang: ${LANG}`);
+  let currentKey = '';
+  let cachedItems = [];
+  let cachedSortedItems = [];
+  let cachedSearchUrl = '';
+  let activeTab = 0;
+  let closed = false;
+  let renderedCount = 0;
+  let imageObserver = null;
+  let isLoadingMore = false;
+  let searchComplete = false;
+  let searchStartTime = 0;
+  let pendingTabEl = null;
+  let pendingInterval = null;
 
-  const PANEL_ID = "ss-floating-panel";
-  const WORKER_URL = "https://cold-art-c5df.fislilouiza91.workers.dev";
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const num = s => { const m = String(s || '').replace(/,/g, '').match(/(\d+(?:\.\d+)?)/); return m ? parseFloat(m[1]) : 0; };
+  const soldNum = s => { const t = String(s || '').toLowerCase().replace(/,/g, ''); const m = t.match(/(\d+(?:\.\d+)?)\s*(k)?/); if (!m) return 0; let v = parseFloat(m[1]); if (m[2]) v *= 1000; return v; };
+  const discNum = s => num(String(s || '').replace('-', ''));
 
-  let currentProduct = null;
-  let sellers = [];
-  // ⭐ الافتراضي "best" = صورة → تشابه → سعر
-  let activeFilter = "best";
-  let minimized = false;
-  let isScanning = false;
-
-  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-  const esc = (s) => { const d = document.createElement("div"); d.textContent = s; return d.innerHTML; };
-  const fmt = (n) => n >= 1000 ? (n / 1000).toFixed(1).replace(".0", "") + "k" : String(n);
-
-  function formatPrice(v, currency) {
-    if (v == null || isNaN(v) || v === 0) return "—";
-    const sym = { USD: "$", EUR: "€", GBP: "£", SAR: "﷼", DA: "DA " }[currency] || "$";
-    const num = v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    return IS_RTL ? `${num} ${sym.trim()}` : `${sym}${num}`;
-  }
-
-  function detectCurrency() {
-    const txt = document.body.innerText || "";
-    if (/\bDA\s*[\d,]/i.test(txt)) return "DA";
-    if (/\bEUR\b|€/.test(txt)) return "EUR";
-    if (/\bGBP\b|£/.test(txt)) return "GBP";
-    return "USD";
-  }
-
-  function extractNumbers(text) {
-    if (!text) return [];
-    const normalized = text
-      .replace(/[٠-٩]/g, d => "٠١٢٣٤٥٦٧٨٩".indexOf(d))
-      .replace(/[۰-۹]/g, d => "۰۱۲۳۴۵۶۷۸۹".indexOf(d))
-      .replace(/[,\u066C\u00A0]/g, "");
-    const results = [];
-    const patterns = [
-      /US\s*\$\s*([\d]+\.?\d{0,2})/g,
-      /\$\s*([\d]+\.?\d{0,2})/g,
-      /DA\s*([\d]+\.?\d{0,2})/g,
-      /€\s*([\d]+\.?\d{0,2})/g,
-      /£\s*([\d]+\.?\d{0,2})/g,
-    ];
-    for (const re of patterns) {
-      let m;
-      while ((m = re.exec(normalized)) !== null) {
-        const v = parseFloat(m[1]);
-        if (v > 0) results.push({ value: v, index: m.index });
-      }
+  function stars(rating) {
+    const r = parseFloat(rating) || 0;
+    const full = Math.floor(r);
+    const half = (r - full) >= 0.5;
+    let out = '';
+    for (let i = 0; i < 5; i++) {
+      if (i < full) out += '★';
+      else if (i === full && half) out += '★';
+      else out += '☆';
     }
-    return results;
+    return out;
   }
 
-  function isExcludedContext(text) {
-    if (!text) return true;
-    return /(\boff\s+on\b|\boff\s+us\b|coupon|voucher|reduction|with\s+coins|extra\s+\d+\s*%|installment|x\s*\$|×\s*\$|pieces|pcs|piece|bulk|wholesale|minimum|per\s+piece|\d+\s*\+|buy\s+now\s+pay|tax\s+excl)/i.test(text);
-  }
-
-  function applyWelcomeDeal(price, rootEl) {
-    if (!price || !rootEl) return price;
-    const txt = rootEl.innerText || "";
-    let m = txt.match(/new\s+shoppers?\s+save\s+\$?\s*([\d.,]+)/i);
-    if (m) {
-      const save = parseFloat(m[1].replace(",", "."));
-      if (save > 0 && save < price) return Math.round((price - save) * 100) / 100;
-    }
-    return price;
-  }
-
-  // ═══════════════════════════════════════════════════════
-  // IMAGE HASH
-  // ═══════════════════════════════════════════════════════
-
-  function extractImageHash(url) {
-    if (!url) return "";
+  function detectProduct() {
     try {
-      const m = url.match(/\/kf\/([SH][A-Za-z0-9]+)\./);
-      if (m) return m[1].toUpperCase();
-      const m2 = url.match(/\/([A-Za-z0-9]{20,})\./);
-      if (m2) return m2[1].toUpperCase();
-      return "";
-    } catch (_) { return ""; }
-  }
-
-  // ═══════════════════════════════════════════════════════
-  // EXTRACTORS
-  // ═══════════════════════════════════════════════════════
-
-  function getTitle() {
-    const sels = [
-      "h1[data-pl='product-title']",
-      ".product-title-text",
-      ".pdp-comp-title",
-      "[class*='title--wrap'] h1",
-      "h1.product-title",
-    ];
-    for (const sel of sels) {
-      const el = document.querySelector(sel);
-      if (el) {
-        const t = el.innerText?.trim();
-        if (t && t.length > 8) return t;
+      const scripts = document.querySelectorAll('script[type="application/ld+json"]');
+      for (const sc of scripts) {
+        const data = JSON.parse(sc.textContent);
+        const arr = Array.isArray(data) ? data : [data];
+        for (const node of arr) {
+          const g = n => { if (!n) return null; if (n['@type'] === 'Product') return n; if (Array.isArray(n)) { for (const x of n) { const r = g(x); if (r) return r; } } if (n['@graph']) { const r = g(n['@graph']); if (r) return r; } return null; };
+          const p = g(node);
+          if (p && p.name) return { title: String(p.name).slice(0, 160) };
+        }
       }
-    }
-    return document.querySelector("meta[property='og:title']")?.getAttribute("content")?.trim() || "";
-  }
-
-  function getImage() {
-    const c = document.querySelector("meta[property='og:image']")?.getAttribute("content");
-    return (c && c.startsWith("http")) ? c : "";
-  }
-
-  function getSold() {
-    const sels = ["[class*='sold--']", ".product-reviewer-sold", "[class*='soldCount']"];
-    for (const sel of sels) {
-      const el = document.querySelector(sel);
-      if (!el) continue;
-      const m = (el.innerText || "").match(/([\d.,]+)\s*(k|K)?/);
-      if (m) {
-        let n = parseFloat(m[1].replace(/,/g, ""));
-        if (m[2]) n *= 1000;
-        if (n > 0) return Math.round(n);
-      }
-    }
+    } catch (e) {}
+    const ogType = document.querySelector('meta[property="og:type"]');
+    const isProduct = ogType && /product/i.test(ogType.content || '');
+    const ogTitle = document.querySelector('meta[property="og:title"]');
+    const title = ogTitle ? ogTitle.content.trim() : (document.title || '').replace(/[|\-–—].*$/, '').trim();
+    const hasPrice = !!document.querySelector('[itemprop="price"], [class*="price" i], meta[itemprop="price"], [id*="price" i]');
+    if ((isProduct || hasPrice) && title.length > 8) return { title: title.slice(0, 160) };
     return null;
   }
-
-  function getRating() {
-    for (const el of document.querySelectorAll("[aria-label*='star'], [aria-label*='rating']")) {
-      const label = el.getAttribute("aria-label") || "";
-      const m = label.match(/([\d.]+)\s*(out of|stars?|rating)/i);
-      if (m) {
-        const r = parseFloat(m[1]);
-        if (r > 0 && r <= 5) return r;
-      }
-    }
-    return null;
-  }
-
-  function getPrice() {
-    const meta = document.querySelector("meta[property='product:price:amount']");
-    if (meta) {
-      const v = parseFloat(meta.getAttribute("content"));
-      if (v > 0.5) return v;
-    }
-    const priceEls = document.querySelectorAll("[class*='price'], [class*='Price']");
-    const candidates = [];
-    for (const el of priceEls) {
-      const cls = (el.className || "").toString().toLowerCase();
-      const style = (el.getAttribute("style") || "").toLowerCase();
-      if (/(old|origin|del|through|cross|before|strike|coupon|off|save|discount|reduce|promo|voucher|bulk|wholesale|minimum|tier)/i.test(cls)) continue;
-      if (/line-through/.test(style)) continue;
-      const txt = (el.innerText || "").trim();
-      if (!txt || isExcludedContext(txt)) continue;
-      const nums = extractNumbers(txt);
-      if (!nums.length || nums[0].value < 3) continue;
-      const isCurrent = /(current|sale|now|main|primary|big|large)/i.test(cls);
-      const fontSize = parseFloat(window.getComputedStyle(el).fontSize) || 12;
-      candidates.push({ value: nums[0].value, isCurrent, fontSize, el });
-    }
-    if (candidates.length) {
-      candidates.sort((a, b) => {
-        if (a.isCurrent !== b.isCurrent) return a.isCurrent ? -1 : 1;
-        return b.fontSize - a.fontSize;
-      });
-      let basePrice = candidates[0].value;
-      const container = candidates[0].el.closest("[class*='product'], [class*='pdp'], [class*='detail']") || document.body;
-      basePrice = applyWelcomeDeal(basePrice, container);
-      return basePrice;
-    }
-    return null;
-  }
-
-  function getProductId() {
-    const m = location.pathname.match(/\/item\/(\d+)/) || location.pathname.match(/(\d{10,})/);
-    return m ? m[1] : null;
-  }
-
-  function getOriginalStore() {
-    const sels = [
-      "[class*='store-info'] [class*='name']",
-      "[class*='seller-name']",
-      ".store-name",
-      "[class*='storeName']",
-    ];
-    for (const sel of sels) {
-      const el = document.querySelector(sel);
-      if (el) {
-        const t = el.innerText?.trim();
-        if (t && t.length > 2 && t.length < 60) return t;
-      }
-    }
-    return "";
-  }
-
-  function extractProduct() {
-    const img = getImage();
-    return {
-      id: getProductId(),
-      title: getTitle(),
-      image: img,
-      imageHash: extractImageHash(img),
-      price: getPrice(),
-      currency: detectCurrency(),
-      sold: getSold(),
-      rating: getRating(),
-      store: getOriginalStore(),
-      url: location.href.split("?")[0],
-    };
-  }
-
-  // ═══════════════════════════════════════════════════════
-  // KEYWORDS
-  // ═══════════════════════════════════════════════════════
-
-  const STOP_WORDS = new Set([
-    "for","with","and","the","a","an","of","to","in","on","at","by","is","are",
-    "original","new","hot","sale","free","shipping","best","top","quality","high",
-    "wholesale","dropshipping","factory","brand","genuine","fast","delivery",
-    "1pc","2pcs","3pcs","pcs","set","pack","style","type","you","your","this","that",
-    "from","into","only","more","all","any","good","great","item","product","pieces",
-    "piece","color","colors","size","sizes","model","series","version",
-    "maximum","minimum","medium","direct","power","strong","small","large",
-    "big","cheap","premium","professional","portable","rechargeable",
-  ]);
-
-  function getKeywords(title) {
-    if (!title) return [];
-    return title.replace(/[^\p{L}\p{N}\s]/gu, " ").split(/\s+/)
-      .map(w => w.trim())
-      .filter(w => w.length > 2 && !STOP_WORDS.has(w.toLowerCase()) && !/^\d+$/.test(w))
-      .map(w => w.toLowerCase());
-  }
-
-  function extractBrand(title) {
-    if (!title) return "";
-    let m = title.match(/^\s*([A-Z][A-Z0-9]{2,15})\b/);
-    if (m) return m[1].toUpperCase();
-    m = title.match(/^\s*([A-Z][a-z]{2,15})\b/);
-    if (m) return m[1].toUpperCase();
-    m = title.slice(0, 60).match(/\b([A-Z][A-Z0-9]{2,15})\b/);
-    if (m) return m[1].toUpperCase();
-    return "";
-  }
-
-  function extractModels(title) {
-    if (!title) return [];
-    const set = new Set();
-    let m = title.match(/\b[A-Z]{2,5}\d{1,5}\b/g) || [];
-    m.forEach(x => set.add(x.toUpperCase()));
-    m = title.match(/\b\d{1,3}[A-Z]{2,5}\b/g) || [];
-    m.forEach(x => set.add(x.toUpperCase()));
-    return Array.from(set);
-  }
-
-  function getPrimaryModel(title) {
-    const models = extractModels(title);
-    for (const m of models) {
-      if (/^[A-Z]{2,5}\d{1,5}$/.test(m)) return m;
-    }
-    return models[0] || "";
-  }
-
-  function countKeywords(text, kw) {
-    if (!text || !kw.length) return 0;
-    const set = new Set(getKeywords(text));
-    let c = 0;
-    for (const k of kw) if (set.has(k)) c++;
-    return c;
-  }
-
-  // ═══════════════════════════════════════════════════════
-  // BUILD MEGA QUERIES
-  // ═══════════════════════════════════════════════════════
-
-  function buildMegaQueries(title) {
-    const brand = extractBrand(title);
-    const primaryModel = getPrimaryModel(title);
-    const allModels = extractModels(title);
-    const kws = getKeywords(title);
-    const queries = [];
-    const seenKw = new Set();
-
-    function addQ(name, kw) {
-      kw = (kw || "").trim();
-      if (!kw) return;
-      const key = kw.toLowerCase();
-      if (seenKw.has(key)) return;
-      seenKw.add(key);
-      queries.push({ name, keywords: kw, pageSize: 50 });
-    }
-
-    if (brand && primaryModel) addQ("brand+model", `${brand} ${primaryModel}`);
-    if (brand && primaryModel) addQ("brand-model-p2", `${brand} ${primaryModel}`, 2);
-    if (primaryModel) {
-      addQ("model-only", primaryModel);
-      addQ("model-p2", primaryModel, 2);
-    }
-    if (brand && kws.length >= 2) addQ("brand+2kw", `${brand} ${kws[0]} ${kws[1]}`);
-    if (brand && kws.length >= 3) addQ("brand+3kw", `${brand} ${kws[0]} ${kws[1]} ${kws[2]}`);
-    if (brand && kws.length >= 1) addQ("brand+kw1", `${brand} ${kws[0]}`);
-    if (brand) addQ("brand-only", brand);
-    if (primaryModel && kws.length >= 1) addQ("model+kw", `${primaryModel} ${kws[0]}`);
-    if (primaryModel && brand) addQ("model+brand+kw", `${primaryModel} ${brand} ${kws[0]}`);
-    if (allModels.length >= 2) addQ("all-models", allModels.slice(0, 3).join(" "));
-    if (kws.length >= 2) addQ("kw2", `${kws[0]} ${kws[1]}`);
-    if (kws.length >= 3) addQ("kw3", `${kws[0]} ${kws[1]} ${kws[2]}`);
-    if (kws.length >= 4) addQ("kw4", kws.slice(0, 4).join(" "));
-    if (kws.length >= 3) addQ("kw-spread", `${kws[0]} ${kws[2]}`);
-
-    return queries.slice(0, 20);
-  }
-
-  async function fetchMegaSearch(queries) {
-    const res = await fetch(`${WORKER_URL}/api/deep-search`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ queries }),
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const payload = await res.json();
-    if (!payload.ok) throw new Error(payload.error || "API error");
-    return payload.data;
-  }
-
-  // ═══════════════════════════════════════════════════════
-  // SCORING (5-TIER)
-  // ═══════════════════════════════════════════════════════
-
-  function scoreProduct(p, ctx) {
-    const price = parseFloat(p.target_sale_price || p.sale_price || 0);
-    const oldP = parseFloat(p.target_original_price || p.original_price || 0);
-    const rating = parseFloat(String(p.evaluate_rate || "0").replace("%", "")) / 20;
-    const title = p.product_title || p.product_name || "";
-    const id = String(p.product_id || "");
-    const store = (p.shop_name || p.store_name || "").trim();
-    const img = p.product_main_image_url || "";
-    const imageHash = extractImageHash(img);
-
-    if (!id || !price || !title) return null;
-    if (id === ctx.productId) return null;
-
-    const titleUpper = title.toUpperCase();
-    const hashMatch = ctx.imageHash && imageHash && ctx.imageHash === imageHash;
-    const hasPrimaryModel = ctx.primaryModel && titleUpper.includes(ctx.primaryModel);
-    const cardBrand = extractBrand(title);
-    const brandMatch = ctx.brand && cardBrand && ctx.brand === cardBrand;
-    const kwMatches = countKeywords(title, ctx.keywords);
-
-    let tier = 0;
-    let score = 0;
-
-    if (hashMatch) {
-      tier = 1;
-      score = 200;
-    } else if (brandMatch && hasPrimaryModel && kwMatches >= 2) {
-      tier = 1; score = 150;
-    } else if (brandMatch && hasPrimaryModel) {
-      tier = 2; score = 120;
-    } else if (hasPrimaryModel && kwMatches >= 3) {
-      tier = 2; score = 100;
-    } else if (brandMatch && kwMatches >= 3) {
-      tier = 3; score = 80;
-    } else if (hasPrimaryModel && kwMatches >= 2) {
-      tier = 3; score = 70;
-    } else if (brandMatch && kwMatches >= 2) {
-      tier = 4; score = 50;
-    } else if (kwMatches >= 4) {
-      tier = 4; score = 40;
-    } else if (kwMatches >= 3) {
-      tier = 5; score = 25;
-    } else {
-      return null;
-    }
-
-    if (ctx.referencePrice > 0) {
-      const ratio = price / ctx.referencePrice;
-      if (ratio < 0.15 || ratio > 7.0) return null;
-    }
-
-    const finalOld = (oldP > price && price > 0) ? oldP : 0;
-    const discount = finalOld > 0 ? Math.round((1 - price / finalOld) * 100) : 0;
-
-    return {
-      _tier: tier,
-      _score: score,
-      _id: id,
-      _store: store.toLowerCase(),
-      _imageHash: imageHash,
-      store: store || "AliExpress Seller",
-      img,
-      price,
-      oldPrice: finalOld,
-      discount,
-      rating: rating > 0 && rating <= 5 ? +rating.toFixed(1) : 0,
-      sold: parseInt(p.lastest_volume || p.volume || 0, 10),
-      link: p.promotion_link || p.product_detail_url || "",
-      title,
-      similarity: Math.min(score, 100),
-      isHashMatch: hashMatch,
-      brandMatch,
-      hasPrimaryModel,
-      kwMatches,
-    };
-  }
-
-  function pickProgressive(scored, ctx) {
-    const seenIds = new Set();
-    const seenStores = new Set();
-    const seenHashes = new Set();
-    const accepted = [];
-    const storesOriginal = ctx.originalStore.toLowerCase();
-
-    scored.sort((a, b) => {
-      if (a._tier !== b._tier) return a._tier - b._tier;
-      return b._score - a._score;
-    });
-
-    for (const s of scored) {
-      if (seenIds.has(s._id)) continue;
-      if (s._store && storesOriginal && s._store === storesOriginal) continue;
-      if (s._tier > 1 && s._store && seenStores.has(s._store)) continue;
-      if (s._imageHash && seenHashes.has(s._imageHash) && !s.isHashMatch) continue;
-
-      seenIds.add(s._id);
-      if (s._store) seenStores.add(s._store);
-      if (s._imageHash) seenHashes.add(s._imageHash);
-      accepted.push(s);
-      if (accepted.length >= 20) break;
-    }
-    return accepted;
-  }
-
-  // ⭐⭐⭐ NEW: ترتيب المبدئي = صورة → تشابه → سعر
-  function rankProducts(products) {
-    return products.map(p => {
-      let rank = p._score;
-      if (p.rating >= 4.5) rank += 5;
-      if (p.sold >= 100) rank += 3;
-      return { ...p, _rank: rank };
-    }).sort((a, b) => {
-      // 1) تطابق الصورة أولاً (مطلق)
-      if (a.isHashMatch !== b.isHashMatch) return a.isHashMatch ? -1 : 1;
-      // 2) التشابه النصي
-      if (Math.abs(b._score - a._score) > 5) return b._score - a._score;
-      // 3) السعر الأفضل (الأرخص أولاً)
-      return a.price - b.price;
-    });
-  }
-
-  // ═══════════════════════════════════════════════════════
-  // PANEL
-  // ═══════════════════════════════════════════════════════
 
   function buildPanel() {
-    document.getElementById(PANEL_ID)?.remove();
-    const panel = document.createElement("div");
+    if (document.getElementById(PANEL_ID)) return;
+    const panel = document.createElement('div');
     panel.id = PANEL_ID;
-    if (IS_RTL) panel.setAttribute("dir", "rtl");
-
-    // ⭐ ترتيب الأزرار: Best أولاً + active
     panel.innerHTML = `
-      <div class="ss-header">
-        <div class="ss-header-left">
-          <div class="ss-logo">S</div>
-          <div>
-            <div class="ss-title">${T("title")}</div>
-            <div class="ss-subtitle" id="ss-source">${T("scanning")}</div>
-          </div>
+      <div class="ss-header" id="ss-header">
+        <div class="ss-logo">S</div>
+        <div class="ss-titles">
+          <div class="ss-title">${esc(T('panelTitle'))}</div>
+          <div class="ss-sub">${esc(T('panelSubtitle'))}</div>
         </div>
-        <div class="ss-header-actions">
-          <button class="ss-btn-icon" data-action="refresh">↻</button>
-          <button class="ss-btn-icon" data-action="minimize">−</button>
-          <button class="ss-btn-icon" data-action="close">×</button>
+        <div class="ss-header-btns">
+          <button class="ss-hbtn" id="ss-refresh" title="${esc(T('refresh'))}">⟳</button>
+          <button class="ss-hbtn" id="ss-minimize" title="${esc(T('minimize'))}">–</button>
+          <button class="ss-hbtn" id="ss-close" title="${esc(T('close'))}">✕</button>
         </div>
       </div>
-      <div class="ss-current">
-        <div class="ss-current-thumb"><img id="ss-cur-img" src="" alt=""></div>
-        <div class="ss-current-info">
-          <div class="ss-current-title" id="ss-cur-title">${T("scanning")}</div>
-          <div class="ss-current-meta" id="ss-cur-meta"></div>
+      <div class="ss-body" id="ss-body">
+        <div class="ss-tabs" id="ss-tabs">
+          <span class="ss-tab active" data-i="0">${esc(T('tabAll'))}</span>
+          <span class="ss-tab" data-i="1">${esc(T('tabCheapest'))}</span>
+          <span class="ss-tab" data-i="2">${esc(T('tabBestRated'))}</span>
+          <span class="ss-tab" data-i="3">${esc(T('tabBestDiscount'))}</span>
+          <span class="ss-tab" data-i="4">${esc(T('tabBestSelling'))}</span>
         </div>
-      </div>
-      <div class="ss-filters" id="ss-filters">
-        <button class="ss-chip ss-active" data-f="best">${T("bestValue")}</button>
-        <button class="ss-chip" data-f="cheap">${T("cheapest")}</button>
-        <button class="ss-chip" data-f="discount">${T("bestDiscount")}</button>
-        <button class="ss-chip" data-f="sold">${T("mostSold")}</button>
-      </div>
-      <div class="ss-list" id="ss-list"></div>
-      <div class="ss-footer">${T("footer")}</div>
-    `;
-    document.body.appendChild(panel);
+        <div class="ss-list" id="ss-list"></div>
+        <div class="ss-footer" id="ss-footer"></div>
+      </div>`;
+    document.documentElement.appendChild(panel);
 
-    panel.querySelector("[data-action='close']").onclick = () => panel.classList.add("ss-hidden");
-    panel.querySelector("[data-action='minimize']").onclick = () => {
-      minimized = !minimized;
-      panel.classList.toggle("ss-minimized", minimized);
-      panel.querySelector("[data-action='minimize']").textContent = minimized ? "+" : "−";
+    document.getElementById('ss-close').onclick = () => { closed = true; panel.remove(); };
+    document.getElementById('ss-minimize').onclick = () => {
+      const b = document.getElementById('ss-body');
+      b.style.display = b.style.display === 'none' ? '' : 'none';
     };
-    panel.querySelector("[data-action='refresh']").onclick = () => { if (!isScanning) doScan(); };
-    panel.querySelector("#ss-filters").onclick = (e) => {
-      const chip = e.target.closest(".ss-chip");
-      if (!chip) return;
-      activeFilter = chip.dataset.f;
-      panel.querySelectorAll(".ss-chip").forEach(c => c.classList.toggle("ss-active", c === chip));
-      renderList();
+    document.getElementById('ss-refresh').onclick = () => { closed = false; currentKey = ''; scan(); };
+    document.getElementById('ss-tabs').addEventListener('click', onTabClick);
+    document.getElementById('ss-list').addEventListener('scroll', onScroll, { passive: true });
+    makeDraggable(panel, document.getElementById('ss-header'));
+  }
+
+  function onTabClick(e) {
+    const t = e.target.closest('.ss-tab');
+    if (!t) return;
+    const newTab = +t.dataset.i;
+    if (newTab === activeTab && !t.classList.contains('ss-tab-counting')) return;
+    if (searchComplete) {
+      activateTab(t, newTab);
+    } else {
+      if (pendingTabEl && pendingTabEl !== t) restoreTab(pendingTabEl);
+      pendingTabEl = t;
+      startPendingCountdown(t);
+    }
+  }
+
+  function activateTab(t, newTab) {
+    if (pendingInterval) { clearInterval(pendingInterval); pendingInterval = null; }
+    if (pendingTabEl) { restoreTab(pendingTabEl); pendingTabEl = null; }
+    activeTab = newTab;
+    document.querySelectorAll('.ss-tab').forEach(x => x.classList.toggle('active', x === t));
+    cachedSortedItems = [];
+    renderedCount = 0;
+    renderList(true);
+  }
+
+  function restoreTab(t) {
+    if (t.dataset.originalText) {
+      t.textContent = t.dataset.originalText;
+      delete t.dataset.originalText;
+    }
+    t.classList.remove('ss-tab-counting');
+  }
+
+  function startPendingCountdown(tabEl) {
+    if (!tabEl.dataset.originalText) tabEl.dataset.originalText = tabEl.textContent;
+    tabEl.classList.add('ss-tab-counting');
+    const updateCountdown = () => {
+      if (searchComplete) { activateTab(tabEl, +tabEl.dataset.i); return; }
+      const elapsed = Date.now() - searchStartTime;
+      const remaining = Math.max(1, Math.ceil((ESTIMATED_SEARCH_TIME - elapsed) / 1000));
+      tabEl.textContent = `⏳ ${remaining}s`;
     };
-
-    makeDraggable(panel);
-    restorePosition(panel);
-    renderCurrentProduct();
-    renderLoading();
+    updateCountdown();
+    if (pendingInterval) clearInterval(pendingInterval);
+    pendingInterval = setInterval(updateCountdown, 1000);
   }
 
-  async function doScan() {
-    if (isScanning) return;
-    isScanning = true;
-    renderLoading();
-
-    try {
-      const brand = extractBrand(currentProduct.title);
-      const primaryModel = getPrimaryModel(currentProduct.title);
-      const models = extractModels(currentProduct.title);
-      const keywords = getKeywords(currentProduct.title);
-      const referencePrice = currentProduct.price;
-      const originalStore = currentProduct.store || "";
-      const imageHash = currentProduct.imageHash || "";
-
-      console.log("═══════════════════════════════════════════");
-      console.log("[Smart Shopper] v44 MEGA SORT");
-      console.log("[Smart Shopper] Product:", currentProduct.title.slice(0, 60));
-      console.log("[Smart Shopper] Image Hash:", imageHash || "N/A");
-      console.log("═══════════════════════════════════════════");
-
-      const queries = buildMegaQueries(currentProduct.title);
-      if (!queries.length) { sellers = []; renderEmpty(); return; }
-
-      const data = await fetchMegaSearch(queries);
-      const raw = data?.products || [];
-      console.log(`[Smart Shopper] Raw: ${raw.length} unique`);
-
-      const ctx = { productId: currentProduct.id, brand, primaryModel, models, keywords, referencePrice, originalStore, imageHash };
-
-      const scored = [];
-      for (const p of raw) {
-        const s = scoreProduct(p, ctx);
-        if (s) scored.push(s);
-      }
-
-      const picked = pickProgressive(scored, ctx);
-      console.log(`[Smart Shopper] ✅ FINAL: ${picked.length}`);
-
-      sellers = rankProducts(picked);
-      updateSourceLabel(sellers.length > 0 ? "smart" : "none");
-      renderList();
-    } catch (e) {
-      console.error("[Smart Shopper] Scan error:", e);
-      sellers = [];
-      renderEmpty();
-    } finally {
-      isScanning = false;
-    }
+  function onScroll(e) {
+    if (isLoadingMore) return;
+    const list = e.target;
+    if (list.scrollTop + list.clientHeight >= list.scrollHeight - 400) loadMore();
   }
 
-  function updateSourceLabel(mode) {
-    const el = document.getElementById("ss-source");
-    if (!el) return;
-    if (mode === "smart") el.textContent = T("sameProduct") + " ✓";
-    else if (mode === "none") el.textContent = "No matches";
-    else el.textContent = T("scanning");
+  function loadMore() {
+    if (renderedCount >= cachedSortedItems.length) return;
+    isLoadingMore = true;
+    requestAnimationFrame(() => { renderList(false); isLoadingMore = false; });
   }
 
-  function renderCurrentProduct() {
-    if (!currentProduct) return;
-    const img = document.getElementById("ss-cur-img");
-    const title = document.getElementById("ss-cur-title");
-    const meta = document.getElementById("ss-cur-meta");
-    if (img) {
-      if (currentProduct.image) {
-        img.src = currentProduct.image;
-        img.onerror = () => { img.style.display = "none"; };
-      } else img.style.display = "none";
-    }
-    if (title) title.textContent = currentProduct.title || "—";
-    if (meta) {
-      const parts = [];
-      if (currentProduct.price != null) parts.push(`<strong>${formatPrice(currentProduct.price, currentProduct.currency)}</strong>`);
-      if (currentProduct.rating != null) parts.push(`<span class="ss-meta-pill ss-star">★ ${currentProduct.rating}</span>`);
-      if (currentProduct.sold != null) parts.push(`<span class="ss-meta-pill">${fmt(currentProduct.sold)} ${T("sold")}</span>`);
-      meta.innerHTML = parts.join(" ");
-    }
-  }
-
-  function renderLoading() {
-    const list = document.getElementById("ss-list");
-    if (!list) return;
-    list.innerHTML = Array.from({ length: 4 }).map(() => `
-      <div class="ss-skeleton">
-        <div class="ss-sk ss-sk-thumb"></div>
-        <div class="ss-sk-lines">
-          <div class="ss-sk ss-sk-line"></div>
-          <div class="ss-sk ss-sk-line short"></div>
-        </div>
-      </div>
-    `).join("");
-  }
-
-  function renderEmpty() {
-    const list = document.getElementById("ss-list");
-    if (!list) return;
-    list.innerHTML = `
-      <div class="ss-empty">
-        <div class="ss-empty-icon">🎯</div>
-        <div class="ss-empty-title">No matches found</div>
-        <div class="ss-empty-sub">This product seems unique. Try another product.</div>
-        <button class="ss-empty-btn" id="ss-retry">${T("scanAgain")}</button>
-      </div>
-    `;
-    document.getElementById("ss-retry")?.addEventListener("click", () => doScan());
-  }
-
-  // ⭐⭐⭐ NEW SORT: صورة → تشابه → سعر
-  function sortSellers(arr, f) {
-    const copy = [...arr];
-
-    // تطابق الصورة دائماً في الأعلى في كل الفلاتر
-    const byImage = (a, b) => {
-      if (a.isHashMatch !== b.isHashMatch) return a.isHashMatch ? -1 : 1;
-      return 0;
-    };
-    // التشابه الثانوي
-    const bySimilarity = (a, b) => {
-      if (Math.abs(b._score - a._score) > 5) return b._score - a._score;
-      return 0;
-    };
-
-    if (f === "cheap") {
-      return copy.sort((a, b) => byImage(a, b) || a.price - b.price);
-    }
-    if (f === "discount") {
-      return copy.sort((a, b) => byImage(a, b) || (b.discount || 0) - (a.discount || 0));
-    }
-    if (f === "sold") {
-      return copy.sort((a, b) => byImage(a, b) || (b.sold || 0) - (a.sold || 0));
-    }
-    // "best" (افتراضي) = صورة → تشابه → سعر
-    return copy.sort((a, b) =>
-      byImage(a, b) ||
-      bySimilarity(a, b) ||
-      a.price - b.price
-    );
-  }
-
-  function renderList() {
-    const list = document.getElementById("ss-list");
-    if (!list) return;
-    if (!sellers.length) return renderEmpty();
-
-    const items = sortSellers(sellers, activeFilter);
-    const minPrice = Math.min(...items.map(s => s.price).filter(p => p > 0));
-    const currentPrice = currentProduct?.price || 0;
-
-    list.innerHTML = items.slice(0, 20).map((s, i) => {
-      const rank = i + 1;
-      const isCheap = s.price === minPrice && s.price > 0;
-      const cardClass = (rank === 1 ? "ss-best " : "") + (s.isHashMatch ? "ss-imgmatch " : "") + (isCheap && !s.isHashMatch ? "ss-cheap" : "");
-      const rankClass = rank <= 3 ? `ss-r${rank}` : "";
-
-      // شارة أولوية الترتيب
-      let badge = "";
-      if (s.isHashMatch) {
-        badge = `<span class="ss-badge ss-badge-exact">🎯 EXACT IMG</span>`;
-      } else if (s.brandMatch && s.hasPrimaryModel) {
-        badge = `<span class="ss-badge ss-badge-match">✓ SAME</span>`;
-      } else if (activeFilter === "cheap" && rank === 1) {
-        badge = `<span class="ss-badge ss-badge-cheap">${T("cheapestTag")}</span>`;
-      } else if (activeFilter === "discount" && rank === 1) {
-        badge = `<span class="ss-badge ss-badge-hot">${T("bestDeal")}</span>`;
-      } else if (activeFilter === "sold" && rank === 1) {
-        badge = `<span class="ss-badge ss-badge-top">${T("mostSoldTag")}</span>`;
-      } else if (isCheap) {
-        badge = `<span class="ss-badge ss-badge-cheap">${T("bestPrice")}</span>`;
-      }
-
-      const discountBadge = s.discount > 0 ? `<span class="ss-save-badge">-${s.discount}%</span>` : "";
-      const oldPriceHtml = s.oldPrice > 0 && s.oldPrice > s.price
-        ? `<span class="ss-price-old">${formatPrice(s.oldPrice, currentProduct.currency)}</span>` : "";
-
-      let compareVs = "";
-      if (currentPrice && s.price > 0) {
-        const diff = s.price - currentPrice;
-        const pct = Math.round(Math.abs(diff) / currentPrice * 100);
-        if (diff < 0) compareVs = `<span class="ss-compare-vs up">−${pct}%</span>`;
-        else if (diff > 0) compareVs = `<span class="ss-compare-vs down">+${pct}%</span>`;
-        else compareVs = `<span class="ss-compare-vs same">=</span>`;
-      }
-
-      const subtitleItems = [];
-      if (s.rating > 0) subtitleItems.push(`<span class="ss-tag-inline rating">★ ${s.rating.toFixed(1)}</span>`);
-      if (s.sold > 0) subtitleItems.push(`<span class="ss-tag-inline sold">${fmt(s.sold)} ${T("sold")}</span>`);
-
-      // ⭐ شريط النتيجة: IMG أو نسبة التشابه
-      const matchScore = s.isHashMatch ? 100 : Math.min(100, s._score);
-      const scoreColor = s.isHashMatch ? "" : (s._score >= 100 ? "mid" : "low");
-      const scoreIcon = s.isHashMatch ? "🎯" : "≈";
-      const matchBar = `
-        <div class="ss-match-line">
-          <span class="ss-match-text">${scoreIcon}</span>
-          <div class="ss-match-track"><div class="ss-match-fill ${scoreColor}" style="width:${matchScore}%"></div></div>
-          <span class="ss-match-text">${matchScore}%</span>
-        </div>
-      `;
-
-      const imgHtml = s.img
-        ? `<img src="${s.img}" loading="lazy" onerror="this.style.display='none';this.parentElement.innerHTML='🖼️'">`
-        : `🖼️`;
-
-      return `
-        <div class="ss-card ${cardClass}" data-idx="${i}">
-          <div class="ss-card-row">
-            <div class="ss-rank ${rankClass}">${rank}</div>
-            <div class="ss-card-thumb">${imgHtml}</div>
-            <div class="ss-card-info">
-              <div class="ss-card-title">${esc(s.store)} ${badge}</div>
-              <div class="ss-card-subtitle">${subtitleItems.join('<span class="ss-sep">●</span>')}</div>
-              ${matchBar}
-            </div>
-            <div class="ss-price-col">
-              <div class="ss-price-line">
-                <span class="ss-price-now">${formatPrice(s.price, currentProduct.currency)}</span>
-                ${discountBadge}
-              </div>
-              <div style="display:flex;align-items:center;justify-content:flex-end;gap:5px">
-                ${oldPriceHtml}
-                ${compareVs}
-              </div>
-            </div>
-          </div>
-        </div>
-      `;
-    }).join("");
-
-    list.querySelectorAll(".ss-card").forEach(card => {
-      card.addEventListener("click", () => {
-        const item = items[+card.dataset.idx];
-        if (item?.link) window.open(item.link, "_blank", "noopener");
-      });
-    });
-  }
-
-  function makeDraggable(panel) {
-    const header = panel.querySelector(".ss-header");
-    if (!header) return;
-    let dragging = false, sx, sy, sl, st;
-    header.addEventListener("mousedown", (e) => {
-      if (e.target.closest(".ss-btn-icon")) return;
+  function makeDraggable(el, handle) {
+    let sx = 0, sy = 0, ox = 0, oy = 0, drag = false;
+    handle.addEventListener('mousedown', e => {
+      if (e.target.closest('button')) return;
+      drag = true; sx = e.clientX; sy = e.clientY;
+      const r = el.getBoundingClientRect(); ox = r.left; oy = r.top;
+      el.style.right = 'auto'; el.style.left = ox + 'px'; el.style.top = oy + 'px'; el.style.bottom = 'auto';
       e.preventDefault();
-      dragging = true;
-      panel.classList.add("ss-dragging");
-      const r = panel.getBoundingClientRect();
-      sx = e.clientX; sy = e.clientY; sl = r.left; st = r.top;
-      panel.style.right = "auto"; panel.style.left = sl + "px"; panel.style.top = st + "px";
-      document.addEventListener("mousemove", onMove);
-      document.addEventListener("mouseup", onUp);
     });
-    function onMove(e) {
-      if (!dragging) return;
-      const dx = e.clientX - sx, dy = e.clientY - sy;
-      panel.style.left = Math.max(4, Math.min(sl + dx, innerWidth - panel.offsetWidth - 4)) + "px";
-      panel.style.top = Math.max(4, Math.min(st + dy, innerHeight - panel.offsetHeight - 4)) + "px";
+    window.addEventListener('mousemove', e => {
+      if (!drag) return;
+      el.style.left = Math.max(0, ox + e.clientX - sx) + 'px';
+      el.style.top = Math.max(0, oy + e.clientY - sy) + 'px';
+    });
+    window.addEventListener('mouseup', () => drag = false);
+  }
+
+  function skeleton() {
+    const l = document.getElementById('ss-list'); if (!l) return;
+    l.innerHTML = Array.from({ length: 6 }, () =>
+      `<div class="ss-card"><div class="ss-thumb-wrapper skel"></div><div class="ss-card-content"><div class="skel line"></div><div class="skel line short"></div></div><div class="ss-discount-box skel"></div></div>`).join('');
+  }
+
+  function message(msg) {
+    const l = document.getElementById('ss-list'); if (!l) return;
+    l.innerHTML = `<div class="ss-msg"><div class="ss-msg-icon">🔍</div>${esc(msg)}</div>`;
+  }
+
+  function applySort() {
+    if (activeTab === 0) { cachedSortedItems = [...cachedItems]; return; }
+    const sorters = [
+      null,
+      (a, b) => num(a.price) - num(b.price) || soldNum(b.sold) - soldNum(a.sold),
+      (a, b) => num(b.rating) - num(a.rating) || num(a.price) - num(b.price),
+      (a, b) => discNum(b.discount) - discNum(a.discount),
+      (a, b) => soldNum(b.sold) - soldNum(a.sold)
+    ];
+    cachedSortedItems = [...cachedItems].sort(sorters[activeTab] || sorters[1]);
+  }
+
+  function buildCard(it, i) {
+    const discountValue = it.discount ? String(it.discount).replace('-', '').replace('%', '') : '';
+    let discountBoxHtml = '';
+    if (discountValue) {
+      discountBoxHtml = `
+        <div class="ss-discount-box">
+          <div class="ss-price-main">${it.price ? esc(it.price) : '—'}</div>
+          <div class="ss-discount-label">-${esc(discountValue)}%</div>
+        </div>`;
+    } else {
+      discountBoxHtml = `
+        <div class="ss-discount-box ss-no-discount">
+          <div class="ss-price-main">${it.price ? esc(it.price) : '—'}</div>
+        </div>`;
     }
-    function onUp() {
-      dragging = false;
-      panel.classList.remove("ss-dragging");
-      document.removeEventListener("mousemove", onMove);
-      document.removeEventListener("mouseup", onUp);
-      try { localStorage.setItem("ss-pos", JSON.stringify({ left: panel.style.left, top: panel.style.top })); } catch (_) {}
+
+    let metaHtml = '';
+    if (it.rating) {
+      metaHtml += `<span class="ss-stars">${stars(it.rating)}</span><span class="ss-rating-num">${esc(it.rating)}</span>`;
+    }
+    if (it.sold) {
+      metaHtml += `<span class="ss-sold">· ${esc(it.sold)} ${esc(T('soldSuffix'))}</span>`;
+    }
+    if (!metaHtml) {
+      metaHtml = `<span class="ss-no-info">${esc(T('noReviews'))}</span>`;
+    }
+
+    return `
+      <a class="ss-card" href="${esc(it.link)}" target="_blank" rel="noopener">
+        <div class="ss-thumb-wrapper">
+          ${it.img 
+            ? `<img class="ss-thumb" data-src="${esc(it.img)}" alt="">` 
+            : `<div class="ss-thumb ss-thumb-empty">🛍</div>`}
+        </div>
+        <div class="ss-card-content">
+          <div class="ss-card-title">${esc(it.title || 'Produit similaire')}</div>
+          <div class="ss-card-meta">${metaHtml}</div>
+        </div>
+        ${discountBoxHtml}
+      </a>`;
+  }
+
+  function setupImageObserver() {
+    if (imageObserver) imageObserver.disconnect();
+    imageObserver = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          const img = entry.target;
+          if (img.dataset.src) {
+            img.src = img.dataset.src;
+            img.removeAttribute('data-src');
+          }
+          imageObserver.unobserve(img);
+        }
+      });
+    }, { root: document.getElementById('ss-list'), rootMargin: '300px' });
+  }
+
+  function renderList(reset) {
+    const l = document.getElementById('ss-list'); if (!l) return;
+    if (reset) {
+      if (!cachedItems.length) { message(T('noResults')); return; }
+      applySort();
+      l.innerHTML = '';
+      renderedCount = 0;
+      setupImageObserver();
+    }
+    if (!cachedSortedItems.length) return;
+    const start = renderedCount;
+    const end = Math.min(start + BATCH_SIZE, cachedSortedItems.length);
+    const batch = cachedSortedItems.slice(start, end);
+    if (!batch.length) return;
+    const fragment = document.createDocumentFragment();
+    const temp = document.createElement('div');
+    temp.innerHTML = batch.map((it, i) => buildCard(it, start + i)).join('');
+    while (temp.firstChild) fragment.appendChild(temp.firstChild);
+    l.appendChild(fragment);
+    renderedCount = end;
+    if (imageObserver) l.querySelectorAll('img[data-src]').forEach(img => imageObserver.observe(img));
+    updateFooter();
+  }
+
+  function updateFooter() {
+    const f = document.getElementById('ss-footer'); if (!f) return;
+    const remaining = cachedSortedItems.length - renderedCount;
+    if (cachedSearchUrl) {
+      f.innerHTML = `
+        <a href="${esc(cachedSearchUrl)}" target="_blank" rel="noopener" class="ss-footer-link">
+          ${esc(T('viewAll'))}
+        </a>
+        ${remaining > 0 ? `<div class="ss-loading-more">${renderedCount} / ${cachedSortedItems.length} · ${esc(T('scrollForMore'))}</div>` : ''}`;
     }
   }
 
-  function restorePosition(panel) {
-    try {
-      const saved = localStorage.getItem("ss-pos");
-      if (!saved) return;
-      const { left, top } = JSON.parse(saved);
-      if (left && top) { panel.style.right = "auto"; panel.style.left = left; panel.style.top = top; }
-    } catch (_) {}
-  }
-
-  async function run() {
-    await sleep(800);
-    currentProduct = extractProduct();
-    console.log("[Smart Shopper] v44 MEGA SORT ready");
-    console.log("[Smart Shopper] Image Hash:", currentProduct.imageHash);
-    if (!currentProduct.title || currentProduct.title.length < 5) return;
+  function runSearch(title) {
     buildPanel();
-    await doScan();
+    const panel = document.getElementById(PANEL_ID);
+    panel.style.display = '';
+    cachedItems = [];
+    cachedSortedItems = [];
+    renderedCount = 0;
+    searchComplete = false;
+    searchStartTime = Date.now();
+    activeTab = 0;
+    if (pendingInterval) { clearInterval(pendingInterval); pendingInterval = null; }
+    if (pendingTabEl) { restoreTab(pendingTabEl); pendingTabEl = null; }
+    document.querySelectorAll('.ss-tab').forEach(x => {
+      x.classList.toggle('active', x.dataset.i === '0');
+    });
+    skeleton();
+
+    chrome.runtime.sendMessage({ type: 'SMART_SEARCH', title }, resp => {
+      if (!resp || !document.getElementById(PANEL_ID)) return;
+      if (!resp.ok) { message(T('errorContact')); return; }
+      cachedItems = resp.items || [];
+      cachedSearchUrl = resp.searchUrl || '';
+      renderList(true);
+    });
   }
 
-  chrome.runtime.onMessage.addListener((msg, _s, res) => {
-    if (msg.type === "GET_PRODUCT") {
-      try { res({ ok: true, product: extractProduct() }); }
-      catch (e) { res({ ok: false, error: String(e) }); }
-      return true;
+  function scan() {
+    if (closed) return;
+    const p = detectProduct();
+    const key = p ? (location.host + location.pathname + '|' + p.title) : '';
+    if (!p || key === currentKey) return;
+    currentKey = key;
+    runSearch(p.title);
+  }
+
+  chrome.runtime.onMessage.addListener((msg) => {
+    if (!msg) return;
+    if (msg.type === 'SMART_SEARCH_UPDATE') {
+      const newItems = msg.items || [];
+      if (!newItems.length) return;
+      const existingIds = new Set(cachedItems.map(x => x.id));
+      const uniqueNew = newItems.filter(x => !existingIds.has(x.id));
+      if (uniqueNew.length) {
+        cachedItems = cachedItems.concat(uniqueNew);
+        cachedSearchUrl = msg.searchUrl || cachedSearchUrl;
+        const list = document.getElementById('ss-list');
+        const scrollTop = list ? list.scrollTop : 0;
+        applySort();
+        if (list) {
+          list.innerHTML = '';
+          renderedCount = 0;
+          setupImageObserver();
+          renderList(false);
+          list.scrollTop = scrollTop;
+        }
+        updateFooter();
+      }
+    }
+    if (msg.type === 'SMART_SEARCH_DONE') {
+      searchComplete = true;
+      if (pendingTabEl) activateTab(pendingTabEl, +pendingTabEl.dataset.i);
+      updateFooter();
     }
   });
 
-  run();
-  console.log("[Smart Shopper] v44 ready.");
+  scan();
+  setInterval(scan, 2500);
 })();
