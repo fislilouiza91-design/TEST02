@@ -1,6 +1,6 @@
 /* ============================================
    Smart Shopper - Content Script
-   Small panel (expand as header icon)
+   Full page display - No batching
    ============================================ */
 (function () {
   'use strict';
@@ -8,7 +8,6 @@
   window.__smartShopper = true;
 
   const PANEL_ID = 'ss-panel';
-  const RENDER_BATCH = 30;   // ← زيادة من 20 إلى 30
 
   const T = (key, vars) => (window.SS_I18N ? window.SS_I18N.t(key, vars) : key);
 
@@ -112,7 +111,7 @@
   }
 
   /* ============================================
-     Expose shared utils to fullscreen module
+     Expose shared utils
      ============================================ */
   window.SS_Utils = {
     esc, num, soldNum, discNum, stars, formatPrice,
@@ -365,15 +364,7 @@
   }
 
   function onScroll(e) {
-    if (isLoadingMore) return;
-    const list = e.target;
-    if (list.scrollTop + list.clientHeight >= list.scrollHeight - 400) loadMoreInView();
-  }
-
-  function loadMoreInView() {
-    if (renderedCount >= cachedSortedItems.length) return;
-    isLoadingMore = true;
-    requestAnimationFrame(() => { renderList(false); isLoadingMore = false; });
+    // لم نعد نحتاج لتحميل تدريجي — كل شيء يظهر دفعة واحدة
   }
 
   function makeDraggable(el, handle) {
@@ -471,7 +462,10 @@
     }, { root: document.getElementById('ss-list'), rootMargin: '300px' });
   }
 
-  function renderList(reset, renderUpTo) {
+  /* ============================================
+     🔥 Render ALL items at once (No batching)
+     ============================================ */
+  function renderList(reset) {
     const l = document.getElementById('ss-list'); if (!l) return;
 
     if (reset) {
@@ -484,10 +478,9 @@
 
     if (!cachedSortedItems.length) return;
 
+    // ✅ عرض كل العناصر دفعة واحدة
     const start = renderedCount;
-    const end = renderUpTo !== undefined
-      ? Math.min(renderUpTo, cachedSortedItems.length)
-      : Math.min(start + RENDER_BATCH, cachedSortedItems.length);
+    const end = cachedSortedItems.length;
 
     if (start >= end) return;
 
@@ -527,11 +520,6 @@
           html += `<div class="ss-no-more">${esc(T('noMoreResults'))}</div>`;
         }
       }
-    }
-
-    const remaining = cachedSortedItems.length - renderedCount;
-    if (remaining > 0) {
-      html += `<div class="ss-loading-more">${renderedCount} / ${cachedSortedItems.length} · ${esc(T('scrollForMore'))}</div>`;
     }
 
     f.innerHTML = html;
@@ -587,7 +575,7 @@
           list.innerHTML = '';
           renderedCount = 0;
           setupImageObserver();
-          renderList(false, cachedSortedItems.length);
+          renderList(false);
           list.scrollTop = scrollTop;
         }
 
@@ -665,7 +653,7 @@
       hasMoreResults = resp.hasMore !== false;
       searchState.totalItems = cachedItems.length;
 
-      console.log('[Smart Shopper] Initial →', cachedItems.length, 'items');
+      console.log('[Smart Shopper] Initial →', cachedItems.length, 'items (ALL from page 1)');
 
       renderList(true);
       updateProgress();
