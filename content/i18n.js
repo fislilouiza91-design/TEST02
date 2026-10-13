@@ -1,6 +1,7 @@
 /* ============================================
    Smart Shopper - i18n Module
    Full multi-language (38 languages)
+   Priority: Cookie > HTML lang > Query > DOM > Subdomain > Browser
    ============================================ */
 (function () {
   'use strict';
@@ -388,27 +389,10 @@
   };
 
   /* ============================================
-     كشف اللغة من عدة مصادر
+     كشف اللغة - الأولوية للغة الفعلية المعروضة
      ============================================ */
   function detectLang() {
-    // 1. Subdomain (fr.aliexpress.com, es.aliexpress.com, ...)
-    const host = location.hostname || '';
-    const sub = host.split('.')[0];
-    const validSubs = ['fr','es','ru','pt','de','it','ar','ko','ja','th','vi','tr','pl','nl','he','id','ms','hi'];
-    if (validSubs.includes(sub)) return sub;
-
-    // 2. query param ?lang=XX
-    try {
-      const params = new URLSearchParams(location.search);
-      const langParam = params.get('lang');
-      if (langParam && TRANSLATIONS[langParam]) return langParam;
-    } catch (e) {}
-
-    // 3. HTML lang
-    const htmlLang = (document.documentElement.lang || '').toLowerCase().split('-')[0];
-    if (htmlLang && TRANSLATIONS[htmlLang]) return htmlLang;
-
-    // 4. Cookie AliExpress
+    // 1. ⭐ الأهم: كوكي AliExpress يحمل اللغة الفعلية المعروضة
     try {
       const ck = document.cookie.match(/(?:^|;\s*)aep_usuc_f=([^;]+)/);
       if (ck) {
@@ -416,16 +400,90 @@
         const bLocale = params.get('b_locale') || params.get('site');
         if (bLocale) {
           const code = bLocale.split('_')[0].toLowerCase();
-          if (TRANSLATIONS[code]) return code;
+          if (TRANSLATIONS[code]) {
+            console.log('[Smart Shopper] Lang from cookie:', code);
+            return code;
+          }
         }
       }
     } catch (e) {}
 
-    // 5. لغة المتصفح
-    const navLang = (navigator.language || 'en').split('-')[0].toLowerCase();
-    if (TRANSLATIONS[navLang]) return navLang;
+    // 2. lang attribute على <html>
+    const htmlLang = (document.documentElement.lang || '').toLowerCase().split('-')[0];
+    if (htmlLang && TRANSLATIONS[htmlLang]) {
+      console.log('[Smart Shopper] Lang from html:', htmlLang);
+      return htmlLang;
+    }
 
-    // 6. افتراضي
+    // 3. query param ?lang=XX
+    try {
+      const params = new URLSearchParams(location.search);
+      const langParam = params.get('lang');
+      if (langParam && TRANSLATIONS[langParam]) {
+        console.log('[Smart Shopper] Lang from query:', langParam);
+        return langParam;
+      }
+    } catch (e) {}
+
+    // 4. محتوى الصفحة - ابحث عن عناصر تشير للغة
+    try {
+      const langSelectors = [
+        'select[name*="lang" i] option:checked',
+        '[class*="language" i] [class*="selected" i]',
+        '[class*="locale" i]'
+      ];
+      for (const sel of langSelectors) {
+        const el = document.querySelector(sel);
+        if (el && el.textContent) {
+          const txt = el.textContent.trim().toLowerCase();
+          const langMap = {
+            'français': 'fr', 'french': 'fr',
+            'english': 'en', 'anglais': 'en',
+            'español': 'es', 'spanish': 'es',
+            'deutsch': 'de', 'german': 'de',
+            'italiano': 'it', 'italian': 'it',
+            'português': 'pt', 'portuguese': 'pt',
+            'русский': 'ru', 'russian': 'ru',
+            'العربية': 'ar', 'arabic': 'ar',
+            'עברית': 'he', 'hebrew': 'he',
+            '日本語': 'ja', 'japanese': 'ja',
+            '한국어': 'ko', 'korean': 'ko',
+            'türkçe': 'tr', 'turkish': 'tr',
+            'polski': 'pl', 'polish': 'pl',
+            'nederlands': 'nl', 'dutch': 'nl',
+            'bahasa indonesia': 'id',
+            'bahasa melayu': 'ms',
+            'ไทย': 'th', 'thai': 'th',
+            'tiếng việt': 'vi', 'vietnamese': 'vi'
+          };
+          for (const key in langMap) {
+            if (txt.includes(key)) {
+              console.log('[Smart Shopper] Lang from DOM:', langMap[key]);
+              return langMap[key];
+            }
+          }
+        }
+      }
+    } catch (e) {}
+
+    // 5. Subdomain (كخيار متأخر جداً)
+    const host = location.hostname || '';
+    const sub = host.split('.')[0];
+    const validSubs = ['fr','es','ru','pt','de','it','ar','ko','ja','th','vi','tr','pl','nl','he','id','ms','hi'];
+    if (validSubs.includes(sub)) {
+      console.log('[Smart Shopper] Lang from subdomain:', sub);
+      return sub;
+    }
+
+    // 6. لغة المتصفح
+    const navLang = (navigator.language || 'en').split('-')[0].toLowerCase();
+    if (TRANSLATIONS[navLang]) {
+      console.log('[Smart Shopper] Lang from browser:', navLang);
+      return navLang;
+    }
+
+    // 7. افتراضي
+    console.log('[Smart Shopper] Lang default: en');
     return 'en';
   }
 
