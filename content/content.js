@@ -1,6 +1,6 @@
 /* ============================================
    Smart Shopper - Content Script
-   SVG icons + Currency symbol at end of price
+   SVG icons + Currency symbol + i18n tabs
    ============================================ */
 (function () {
   'use strict';
@@ -10,7 +10,7 @@
   const PANEL_ID = 'ss-panel';
   const BATCH_SIZE = 15;
 
-  const T = (key) => (window.SS_I18N ? window.SS_I18N.t(key) : key);
+  const T = (key, vars) => (window.SS_I18N ? window.SS_I18N.t(key, vars) : key);
 
   let currentKey = '';
   let cachedItems = [];
@@ -81,7 +81,6 @@
      ============================================ */
   function formatPrice(rawPrice) {
     if (!rawPrice) return '';
-    // استخرج الأرقام والنقاط والفواصل فقط
     const cleaned = String(rawPrice).replace(/[^\d.,]/g, '').trim();
     if (!cleaned) return String(rawPrice);
     return cleaned + ' ' + currentCurrencySymbol;
@@ -165,7 +164,7 @@
   }
 
   /* ============================================
-     بناء النافذة
+     بناء النافذة (مع i18n في التبويبات)
      ============================================ */
   function buildPanel() {
     if (document.getElementById(PANEL_ID)) return;
@@ -186,11 +185,11 @@
       </div>
       <div class="ss-body" id="ss-body">
         <div class="ss-tabs" id="ss-tabs">
-          <span class="ss-tab active" data-i="0">${SVG_ICONS.all}<span>Tous</span></span>
-          <span class="ss-tab" data-i="1">${SVG_ICONS.cheapest}<span>Moins cher</span></span>
-          <span class="ss-tab" data-i="2">${SVG_ICONS.rated}<span>Mieux noté</span></span>
-          <span class="ss-tab" data-i="3">${SVG_ICONS.discount}<span>Meilleure remise</span></span>
-          <span class="ss-tab" data-i="4">${SVG_ICONS.selling}<span>Plus vendu</span></span>
+          <span class="ss-tab active" data-i="0">${SVG_ICONS.all}<span>${esc(T('tabAll'))}</span></span>
+          <span class="ss-tab" data-i="1">${SVG_ICONS.cheapest}<span>${esc(T('tabCheapest'))}</span></span>
+          <span class="ss-tab" data-i="2">${SVG_ICONS.rated}<span>${esc(T('tabBestRated'))}</span></span>
+          <span class="ss-tab" data-i="3">${SVG_ICONS.discount}<span>${esc(T('tabBestDiscount'))}</span></span>
+          <span class="ss-tab" data-i="4">${SVG_ICONS.selling}<span>${esc(T('tabBestSelling'))}</span></span>
         </div>
         <div class="ss-progress" id="ss-progress"></div>
         <div class="ss-list" id="ss-list"></div>
@@ -216,7 +215,7 @@
     const p = document.getElementById('ss-progress'); if (!p) return;
     if (!searchState.running && !searchState.complete) { p.innerHTML = ''; return; }
     if (searchState.complete) {
-      p.innerHTML = `<span class="ss-progress-done">✓ ${searchState.totalItems} résultats</span>`;
+      p.innerHTML = `<span class="ss-progress-done">${esc(T('resultsText', { n: searchState.totalItems }))}</span>`;
       setTimeout(() => { if (p) p.innerHTML = ''; }, 2000);
       return;
     }
@@ -227,7 +226,7 @@
       <div class="ss-progress-bar">
         <div class="ss-progress-fill" style="width:${pct}%"></div>
       </div>
-      <span class="ss-progress-text">Page ${done}/${total} · ${searchState.totalItems} produits</span>
+      <span class="ss-progress-text">${esc(T('pageText', { p: done, t: total, n: searchState.totalItems }))}</span>
     `;
   }
 
@@ -279,10 +278,9 @@
         return;
       }
       const remaining = calcRemainingSec();
-      // احتفظ بالأيقونة + النص
       const svgMatch = tabEl.dataset.originalText.match(/<svg[^>]*>.*?<\/svg>/);
       const svg = svgMatch ? svgMatch[0] : '';
-      tabEl.innerHTML = svg + `<span>⏳ ${remaining}s</span>`;
+      tabEl.innerHTML = svg + `<span>${esc(T('countingText', { s: remaining }))}</span>`;
     };
 
     updateCountdown();
