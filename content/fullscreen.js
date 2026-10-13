@@ -1,6 +1,6 @@
 /* ============================================
    Smart Shopper - Fullscreen Page Module
-   Standalone fullscreen view
+   Standalone fullscreen view (no refresh button)
    ============================================ */
 (function () {
   'use strict';
@@ -17,21 +17,19 @@
   let renderedCount = 0;
   let imageObserver = null;
   let callbacks = {};
-  let currencySymbol = '$';
 
   const RENDER_BATCH = 30;
 
-  /* ---------- SVG Icons ---------- */
+  /* ---------- SVG Icons (Fluent) ---------- */
   const SVG = {
-    back: '<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>',
-    close: '<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>',
-    refresh: '<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>',
-    all: '<svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M7 18c-1.1 0-1.99.9-1.99 2S5.9 22 7 22s2-.9 2-2-.9-2-2-2zM1 2v2h2l3.6 7.59-1.35 2.45c-.16.28-.25.61-.25.96 0 1.1.9 2 2 2h12v-2H7.42c-.14 0-.25-.11-.25-.25l.03-.12.9-1.63h7.45c.75 0 1.41-.41 1.75-1.03l3.58-6.49c.08-.14.12-.31.12-.48 0-.55-.45-1-1-1H5.21l-.94-2H1zm16 16c-1.1 0-1.99.9-1.99 2s.89 2 1.99 2 2-.9 2-2-.9-2-2-2z"/></svg>',
-    cheapest: '<svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M21.41 11.58l-9-9C12.05 2.22 11.55 2 11 2H4c-1.1 0-2 .9-2 2v7c0 .55.22 1.05.59 1.42l9 9c.36.36.86.58 1.41.58s1.05-.22 1.41-.59l7-7c.37-.36.59-.86.59-1.41s-.23-1.06-.59-1.42zM5.5 7C4.67 7 4 6.33 4 5.5S4.67 4 5.5 4 7 4.67 7 5.5 6.33 7 5.5 7z"/></svg>',
-    rated: '<svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>',
-    discount: '<svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M13.5.67s.74 2.65.74 4.8c0 2.06-1.35 3.73-3.41 3.73-2.07 0-3.63-1.67-3.63-3.73l.03-.36C5.21 7.51 4 10.62 4 14c0 4.42 3.58 8 8 8s8-3.58 8-8C20 8.61 17.41 3.8 13.5.67z"/></svg>',
-    selling: '<svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M16 6l2.29 2.29-4.88 4.88-4-4L2 16.59 3.41 18l6-6 4 4 6.3-6.29L22 12V6z"/></svg>',
-    plus: '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>'
+    back: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>',
+    close: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>',
+    all: '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>',
+    cheapest: '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 5 6.3 6.3a1 1 0 0 1 0 1.4L15 19"/><path d="M9 5 2.7 11.3a1 1 0 0 0 0 1.4L9 19"/></svg>',
+    rated: '<svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M12 2l2.9 6.9 7.1.6-5.4 4.6 1.6 7-6.2-3.7-6.2 3.7 1.6-7L2 9.5l7.1-.6z"/></svg>',
+    discount: '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41 13.42 20.58a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><circle cx="7" cy="7" r="1.5" fill="currentColor"/></svg>',
+    selling: '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8"/><path d="M14 7h7v7"/></svg>',
+    plus: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>'
   };
 
   /* ---------- Helpers ---------- */
@@ -44,7 +42,7 @@
   const formatPrice = (p) => U().formatPrice ? U().formatPrice(p) : (p || '');
 
   /* ============================================
-     بناء DOM الصفحة الكاملة
+     Build DOM
      ============================================ */
   function buildDOM() {
     let el = document.getElementById(FS_ID);
@@ -62,7 +60,6 @@
           </div>
         </div>
         <div class="ss-fs-header-btns">
-          <button class="ss-fs-btn" id="ss-fs-refresh" title="${esc(T('refresh'))}">${SVG.refresh}</button>
           <button class="ss-fs-btn ss-fs-back" id="ss-fs-back" title="${esc(T('back') || 'Back')}">
             ${SVG.back} <span>${esc(T('back') || 'Retour')}</span>
           </button>
@@ -81,12 +78,8 @@
     `;
     document.documentElement.appendChild(el);
 
-    // Events
     document.getElementById('ss-fs-back').onclick = () => close();
     document.getElementById('ss-fs-close').onclick = () => close();
-    document.getElementById('ss-fs-refresh').onclick = () => {
-      if (callbacks.onRefresh) callbacks.onRefresh();
-    };
     document.getElementById('ss-fs-tabs').addEventListener('click', (e) => {
       const tab = e.target.closest('.ss-fs-tab');
       if (!tab) return;
@@ -100,7 +93,6 @@
       if (callbacks.onTabChange) callbacks.onTabChange(newTab);
     });
 
-    // List scroll
     document.getElementById('ss-fs-list').addEventListener('scroll', (e) => {
       const list = e.target;
       if (list.scrollTop + list.clientHeight >= list.scrollHeight - 500) {
@@ -110,14 +102,13 @@
       }
     }, { passive: true });
 
-    // Set active tab
     document.querySelectorAll('#ss-fs-tabs .ss-fs-tab').forEach(x => {
       x.classList.toggle('active', +x.dataset.i === activeTab);
     });
   }
 
   /* ============================================
-     بناء بطاقة منتج (نفس منطق content.js)
+     Build Card
      ============================================ */
   function buildCard(it) {
     const discountValue = it.discount ? String(it.discount).replace('-', '').replace('%', '') : '';
@@ -160,7 +151,7 @@
   }
 
   /* ============================================
-     الترتيب
+     Sort
      ============================================ */
   function applySort() {
     if (activeTab === 0) {
@@ -182,7 +173,7 @@
   }
 
   /* ============================================
-     عرض القائمة
+     Render List
      ============================================ */
   function renderList(reset) {
     const l = document.getElementById('ss-fs-list'); if (!l) return;
@@ -233,7 +224,7 @@
   }
 
   /* ============================================
-     الفوتر
+     Footer
      ============================================ */
   function updateFooter() {
     const f = document.getElementById('ss-fs-footer'); if (!f) return;
@@ -279,7 +270,6 @@
     hasMore = opts.hasMore !== false;
     fetching = !!opts.fetching;
     currentProductPrice = opts.currentProductPrice || 0;
-    currencySymbol = opts.currencySymbol || '$';
     callbacks = {
       onLoadMore: opts.onLoadMore || null,
       onTabChange: opts.onTabChange || null,
