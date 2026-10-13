@@ -1,7 +1,3 @@
-/* ============================================
-   Smart Shopper - Popup Script
-   ============================================ */
-
 document.addEventListener('DOMContentLoaded', async () => {
   const statusDot = document.getElementById('status-dot');
   const statusText = document.getElementById('status-text');
