@@ -1,6 +1,6 @@
 /* ============================================
    Smart Shopper - Content Script
-   SVG icons + Currency symbol + i18n tabs
+   Price comparison coloring
    ============================================ */
 (function () {
   'use strict';
@@ -22,6 +22,9 @@
   let imageObserver = null;
   let isLoadingMore = false;
 
+  // 💰 سعر المنتج الحالي (للمقارنة)
+  let currentProductPrice = 0;
+
   let searchState = {
     running: false,
     complete: false,
@@ -35,7 +38,7 @@
   let pendingInterval = null;
 
   /* ============================================
-     أيقونات SVG (بدل الإيموجي)
+     أيقونات SVG
      ============================================ */
   const SVG_ICONS = {
     all: '<svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor"><path d="M7 18c-1.1 0-1.99.9-1.99 2S5.9 22 7 22s2-.9 2-2-.9-2-2-2zM1 2v2h2l3.6 7.59-1.35 2.45c-.16.28-.25.61-.25.96 0 1.1.9 2 2 2h12v-2H7.42c-.14 0-.25-.11-.25-.25l.03-.12.9-1.63h7.45c.75 0 1.41-.41 1.75-1.03l3.58-6.49c.08-.14.12-.31.12-.48 0-.55-.45-1-1-1H5.21l-.94-2H1zm16 16c-1.1 0-1.99.9-1.99 2s.89 2 1.99 2 2-.9 2-2-.9-2-2-2z"/></svg>',
@@ -46,7 +49,7 @@
   };
 
   /* ============================================
-     كشف العملة من كوكي AliExpress
+     كشف العملة
      ============================================ */
   let currentCurrencySymbol = '$';
   let currentCurrencyCode = 'USD';
@@ -77,7 +80,7 @@
   })();
 
   /* ============================================
-     تنسيق السعر مع رمز العملة في النهاية
+     تنسيق السعر
      ============================================ */
   function formatPrice(rawPrice) {
     if (!rawPrice) return '';
@@ -108,7 +111,7 @@
   }
 
   /* ============================================
-     فحص صفحة المنتج
+     فحص صفحة المنتج + استخراج السعر
      ============================================ */
   function isProductPage() {
     return /aliexpress\.(com|us)\/(item|i)\/\d+/i.test(location.href);
@@ -117,6 +120,10 @@
   function detectProduct() {
     if (!isProductPage()) return null;
 
+    let title = null;
+    let price = 0;
+
+    // محاولة 1: JSON-LD Product
     try {
       const scripts = document.querySelectorAll('script[type="application/ld+json"]');
       for (const sc of scripts) {
@@ -131,19 +138,72 @@
             return null;
           };
           const p = g(node);
-          if (p && p.name) return { title: String(p.name).slice(0, 160) };
+          if (p) {
+            if (p.name && !title) title = String(p.name).slice(0, 160);
+
+            if (p.offers && !price) {
+              const offers = Array.isArray(p.offers) ? p.offers[0] : p.offers;
+              if (offers) {
+                const raw = offers.price || offers.lowPrice || offers.highPrice || '';
+                if (raw) price = num(raw);
+              }
+            }
+          }
         }
       }
     } catch (e) {}
 
-    const ogTitle = document.querySelector('meta[property="og:title"]');
-    if (ogTitle && ogTitle.content && ogTitle.content.trim().length > 8) {
-      return { title: ogTitle.content.trim().slice(0, 160) };
+    // محاولة 2: og:price:amount
+    if (!price) {
+      const ogPrice = document.querySelector('meta[property="og:price:amount"]');
+      if (ogPrice && ogPrice.content) price = num(ogPrice.content);
     }
 
-    const title = (document.title || '').replace(/[|\-–—].*$/, '').trim();
-    if (title.length > 8) return { title: title.slice(0, 160) };
+    // محاولة 3: itemprop="price"
+    if (!price) {
+      const metaPrice = document.querySelector('meta[itemprop="price"]');
+      if (metaPrice && metaPrice.content) price = num(metaPrice.content);
+      const elPrice = document.querySelector('[itemprop="price"]');
+      if (!price && elPrice) {
+        const m = elPrice.textContent.match(/(\d+(?:[.,]\d+)?)/);
+        if (m) price = num(m[1]);
+      }
+    }
 
+    // محاولة 4: DOM
+    if (!price) {
+      const selectors = [
+        '.product-price-value',
+        '[class*="ProductPrice" i] [class*="value" i]',
+        '[class*="price--current" i]',
+        '[class*="price_current" i]',
+        '[class*="sale-price" i]',
+        '[class*="currentPrice" i]'
+      ];
+      for (const sel of selectors) {
+        const el = document.querySelector(sel);
+        if (el) {
+          const m = el.textContent.match(/(\d+(?:[.,]\d+)?)/);
+          if (m) { price = num(m[1]); break; }
+        }
+      }
+    }
+
+    // احتياطي للعنوان
+    if (!title) {
+      const ogTitle = document.querySelector('meta[property="og:title"]');
+      if (ogTitle && ogTitle.content && ogTitle.content.trim().length > 8) {
+        title = ogTitle.content.trim().slice(0, 160);
+      } else {
+        const t = (document.title || '').replace(/[|\-–—].*$/, '').trim();
+        if (t.length > 8) title = t.slice(0, 160);
+      }
+    }
+
+    if (title) {
+      console.log('[Smart Shopper] Current product price:', price, currentCurrencyCode);
+      return { title, price };
+    }
     return null;
   }
 
@@ -164,7 +224,7 @@
   }
 
   /* ============================================
-     بناء النافذة (مع i18n في التبويبات)
+     بناء النافذة
      ============================================ */
   function buildPanel() {
     if (document.getElementById(PANEL_ID)) return;
@@ -344,23 +404,25 @@
   }
 
   /* ============================================
-     بناء البطاقة
+     بناء البطاقة (مع ألوان حسب السعر)
      ============================================ */
   function buildCard(it, i) {
     const discountValue = it.discount ? String(it.discount).replace('-', '').replace('%', '') : '';
-    let discountBoxHtml = '';
-    if (discountValue) {
-      discountBoxHtml = `
-        <div class="ss-discount-box">
-          <div class="ss-price-main">${it.price ? esc(formatPrice(it.price)) : '—'}</div>
-          <div class="ss-discount-label">-${esc(discountValue)}%</div>
-        </div>`;
-    } else {
-      discountBoxHtml = `
-        <div class="ss-discount-box ss-no-discount">
-          <div class="ss-price-main">${it.price ? esc(formatPrice(it.price)) : '—'}</div>
-        </div>`;
-    }
+
+    // 💰 مقارنة السعر مع سعر المنتج الحالي
+    const itemPrice = num(it.price);
+    const hasCurrentPrice = currentProductPrice > 0;
+    const isHigherPrice = hasCurrentPrice && itemPrice > currentProductPrice;
+
+    let boxClass = 'ss-discount-box';
+    if (isHigherPrice) boxClass += ' ss-higher-price';
+    else if (!discountValue) boxClass += ' ss-no-discount';
+
+    let discountBoxHtml = `
+      <div class="${boxClass}">
+        <div class="ss-price-main">${it.price ? esc(formatPrice(it.price)) : '—'}</div>
+        ${discountValue ? `<div class="ss-discount-label">-${esc(discountValue)}%</div>` : ''}
+      </div>`;
 
     let metaHtml = '';
     if (it.rating) {
@@ -443,10 +505,13 @@
   /* ============================================
      بدء البحث
      ============================================ */
-  function runSearch(title) {
+  function runSearch(title, productPrice) {
     buildPanel();
     const panel = document.getElementById(PANEL_ID);
     panel.style.display = '';
+
+    currentProductPrice = productPrice || 0;
+    console.log('[Smart Shopper] Price for comparison:', currentProductPrice);
 
     cachedItems = [];
     cachedSortedItems = [];
@@ -559,6 +624,7 @@
       const existing = document.getElementById(PANEL_ID);
       if (existing) existing.remove();
       currentKey = '';
+      currentProductPrice = 0;
       searchState.running = false;
       searchState.complete = false;
       return;
@@ -571,7 +637,7 @@
     if (key === currentKey) return;
 
     currentKey = key;
-    runSearch(p.title);
+    runSearch(p.title, p.price || 0);
   }
 
   // مراقبة SPA
