@@ -1,6 +1,6 @@
 /* ============================================
    Smart Shopper - Fullscreen Page Module
-   Standalone fullscreen view (no refresh button)
+   With loading state support
    ============================================ */
 (function () {
   'use strict';
@@ -13,6 +13,7 @@
   let activeTab = 0;
   let hasMore = true;
   let fetching = false;
+  let loading = false;
   let currentProductPrice = 0;
   let renderedCount = 0;
   let imageObserver = null;
@@ -20,7 +21,6 @@
 
   const RENDER_BATCH = 30;
 
-  /* ---------- SVG Icons (Fluent) ---------- */
   const SVG = {
     back: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>',
     close: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>',
@@ -32,7 +32,6 @@
     plus: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>'
   };
 
-  /* ---------- Helpers ---------- */
   const T = (key, vars) => (window.SS_I18N ? window.SS_I18N.t(key, vars) : key);
   const U = () => window.SS_Utils || {};
 
@@ -159,15 +158,15 @@
       return;
     }
     const U2 = window.SS_Utils || {};
-    const soldNum = U2.soldNum || (() => 0);
-    const discNum = U2.discNum || (() => 0);
+    const soldNumFn = U2.soldNum || (() => 0);
+    const discNumFn = U2.discNum || (() => 0);
 
     const sorters = [
       null,
-      (a, b) => num(a.price) - num(b.price) || soldNum(b.sold) - soldNum(a.sold),
+      (a, b) => num(a.price) - num(b.price) || soldNumFn(b.sold) - soldNumFn(a.sold),
       (a, b) => num(b.rating) - num(a.rating) || num(a.price) - num(b.price),
-      (a, b) => discNum(b.discount) - discNum(a.discount),
-      (a, b) => soldNum(b.sold) - soldNum(a.sold)
+      (a, b) => discNumFn(b.discount) - discNumFn(a.discount),
+      (a, b) => soldNumFn(b.sold) - soldNumFn(a.sold)
     ];
     sortedItems = [...items].sort(sorters[activeTab] || sorters[1]);
   }
@@ -177,6 +176,16 @@
      ============================================ */
   function renderList(reset) {
     const l = document.getElementById('ss-fs-list'); if (!l) return;
+
+    if (loading && !items.length) {
+      l.innerHTML = `
+        <div class="ss-fs-loading-state">
+          <div class="ss-fs-loading-spinner"></div>
+          <div class="ss-fs-loading-text">${esc(T('loading'))}</div>
+        </div>`;
+      updateFooter();
+      return;
+    }
 
     if (reset) {
       applySort();
@@ -231,6 +240,11 @@
 
     let html = '';
 
+    if (loading && !items.length) {
+      f.innerHTML = '';
+      return;
+    }
+
     if (fetching) {
       html += `<button class="ss-fs-load-more ss-fs-loading" disabled>
         <span class="ss-fs-spinner"></span>
@@ -269,6 +283,7 @@
     activeTab = opts.activeTab || 0;
     hasMore = opts.hasMore !== false;
     fetching = !!opts.fetching;
+    loading = !!opts.loading;
     currentProductPrice = opts.currentProductPrice || 0;
     callbacks = {
       onLoadMore: opts.onLoadMore || null,
@@ -282,7 +297,7 @@
     isOpen = true;
 
     document.documentElement.style.overflow = 'hidden';
-    console.log('[SS Fullscreen] Opened with', items.length, 'items');
+    console.log('[SS Fullscreen] Opened with', items.length, 'items | loading:', loading);
   }
 
   function close() {
@@ -303,19 +318,19 @@
   function setState(state) {
     if (state.hasMore !== undefined) hasMore = state.hasMore;
     if (state.fetching !== undefined) fetching = state.fetching;
+    if (state.loading !== undefined) loading = state.loading;
+
     if (state.activeTab !== undefined) {
       activeTab = state.activeTab;
       document.querySelectorAll('#ss-fs-tabs .ss-fs-tab').forEach(x =>
         x.classList.toggle('active', +x.dataset.i === activeTab)
       );
       if (isOpen) renderList(true);
+    } else if (isOpen) {
+      renderList(true);
     }
-    if (isOpen) updateFooter();
   }
 
-  /* ============================================
-     Export
-     ============================================ */
   window.SS_Fullscreen = {
     open,
     close,
