@@ -92,7 +92,7 @@
     background: rgba(255, 255, 255, 0.12);
 }
 .ss-fs-close:hover {
-    background: #e62e04;
+    background: #e81123;
 }
 
 /* ============================================
@@ -264,7 +264,7 @@
 .ss-fs-no-info { color: #bbb; font-size: 11px; font-style: italic; }
 
 /* ============================================
-   Price Box (Green default / Red if higher)
+   Price Box
    ============================================ */
 .ss-fs-price-box {
     flex-shrink: 0;
@@ -390,6 +390,39 @@
     font-size: 15px;
     color: #888;
     font-weight: 500;
+}
+
+/* ============================================
+   Loading State
+   ============================================ */
+.ss-fs-loading-state {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 120px 20px;
+    gap: 20px;
+}
+
+.ss-fs-loading-spinner {
+    width: 48px;
+    height: 48px;
+    border: 4px solid rgba(0, 0, 0, 0.08);
+    border-top-color: #e62e04;
+    border-radius: 50%;
+    animation: ss-fs-loading-spin 0.9s linear infinite;
+}
+
+@keyframes ss-fs-loading-spin {
+    to { transform: rotate(360deg); }
+}
+
+.ss-fs-loading-text {
+    font-size: 15px;
+    color: #666;
+    font-weight: 600;
+    letter-spacing: 0.3px;
 }
 
 /* ============================================
