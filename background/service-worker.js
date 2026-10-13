@@ -1,5 +1,6 @@
 /* ============================================
    Smart Shopper - Background Service Worker
+   Fetches search results from AliExpress
    ============================================ */
 
 const MAX_PAGES = 8;
@@ -67,7 +68,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   return true;
 });
 
-/* ---------- استخراج النص من أي قيمة ---------- */
 function extractText(v) {
   if (v == null) return '';
   if (typeof v === 'string') return v;
@@ -88,23 +88,6 @@ function extractText(v) {
   return String(v);
 }
 
-/* ---------- استخراج اسم المتجر ---------- */
-function extractStore(o) {
-  const candidates = [
-    o.storeName, o.sellerName, o.shopName, o.companyName,
-    o.store && o.store.storeName, o.store && o.store.name,
-    o.seller && o.seller.name, o.seller && o.seller.storeName,
-    o.shop && o.shop.name
-  ];
-  for (const c of candidates) {
-    if (typeof c === 'string' && c.trim() && c !== 'undefined' && c !== 'null' && c !== 'AliExpress') {
-      return c.trim();
-    }
-  }
-  return 'AliExpress';
-}
-
-/* ---------- جلب صفحة ---------- */
 async function fetchPage(baseUrl, page) {
   try {
     const url = baseUrl + '&page=' + page;
@@ -126,7 +109,6 @@ async function fetchPage(baseUrl, page) {
   }
 }
 
-/* ---------- استخراج المنتجات ---------- */
 function parseItems(html) {
   const arrText = extractJsonArray(html, '"itemList"') || extractJsonArray(html, '"gridItems"');
   if (!arrText) return [];
@@ -163,8 +145,6 @@ function parseItems(html) {
       const oldPrice = extractText(orig.formatedPrice || orig.minPrice || '');
       const discount = extractText(o.discount || sale.discount || '');
 
-      const store = extractStore(o);
-
       const rating = extractText(
         (o.evaluation && (o.evaluation.starRating || o.evaluation.averageStar)) ||
         o.averageStarRate || o.starRating || ''
@@ -174,7 +154,7 @@ function parseItems(html) {
       out.push({
         id: String(id),
         title: title || 'Produit similaire',
-        img, price, oldPrice, discount, store, rating, sold,
+        img, price, oldPrice, discount, rating, sold,
         link: 'https://www.aliexpress.com/item/' + id + '.html'
       });
     } catch (e) {}
@@ -191,7 +171,7 @@ function fallbackIds(html) {
     seen.add(m[1]);
     out.push({
       id: m[1], title: 'Produit similaire', img: '', price: '', oldPrice: '',
-      discount: '', store: 'AliExpress', rating: '', sold: '',
+      discount: '', rating: '', sold: '',
       link: 'https://www.aliexpress.com/item/' + m[1] + '.html'
     });
   }
