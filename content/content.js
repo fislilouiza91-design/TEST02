@@ -1,6 +1,6 @@
 /* ============================================
    Smart Shopper - Content Script
-   Filters results to SAME product only
+   No filter + unlimited until exhausted
    ============================================ */
 (function () {
   'use strict';
@@ -9,14 +9,11 @@
 
   const PANEL_ID = 'ss-panel';
   const RENDER_BATCH = 20;
-  const MAX_TOTAL_ITEMS = 999999;
-  const SIMILARITY_THRESHOLD = 0.55; // 55% تشابه مطلوب
 
   const T = (key, vars) => (window.SS_I18N ? window.SS_I18N.t(key, vars) : key);
 
   let currentKey = '';
   let currentSearchTitle = '';
-  let currentKeywords = [];
   let cachedItems = [];
   let cachedSortedItems = [];
   let cachedSearchUrl = '';
@@ -111,87 +108,6 @@
     return out;
   }
 
-  /* ============================================
-     🔑 دوال مطابقة العنوان
-     ============================================ */
-  const STOP_WORDS = new Set([
-    'the','a','an','and','or','of','for','to','in','on','at','by','with','from',
-    'is','are','was','were','be','been','being','have','has','had','do','does','did',
-    'le','la','les','un','une','des','du','de','et','ou','pour','dans','sur','avec',
-    'el','los','las','una','unos','y','o','para','en','con',
-    'der','die','das','und','oder','für','in','mit',
-    'il','lo','gli','e','o','per','con',
-    'o','a','os','as','e','ou','para','com',
-    'и','в','на','с','по','или','для',
-    'new','original','high','quality','hot','sale','free','shipping','dropshipping',
-    'wholesale','2024','2025','2026','best','top','good','super','fast','usb','type'
-  ]);
-
-  function tokenize(text) {
-    return String(text || '')
-      .toLowerCase()
-      .replace(/[^\p{L}\p{N}\s]/gu, ' ')
-      .split(/\s+/)
-      .filter(w => w.length >= 2 && !STOP_WORDS.has(w))
-      .map(w => w.replace(/s$/, '')); // إزالة الجمع البسيط
-  }
-
-  function extractKeywords(title) {
-    const words = tokenize(title);
-    const freq = {};
-    words.forEach(w => { freq[w] = (freq[w] || 0) + 1; });
-    // الكلمات الأكثر تكراراً + الطويلة (أسماء ماركات/موديلات)
-    return Object.keys(freq).sort((a, b) => {
-      const scoreA = freq[a] * a.length;
-      const scoreB = freq[b] * b.length;
-      return scoreB - scoreA;
-    }).slice(0, 12);
-  }
-
-  /**
-   * حساب نسبة التشابه بين عنوانين (0-1)
-   */
-  function titleSimilarity(title1, title2) {
-    const words1 = new Set(tokenize(title1));
-    const words2 = new Set(tokenize(title2));
-    if (!words1.size || !words2.size) return 0;
-
-    let intersection = 0;
-    for (const w of words1) {
-      if (words2.has(w)) intersection++;
-    }
-
-    // Jaccard + تقاطع أساسي
-    const union = new Set([...words1, ...words2]).size;
-    const jaccard = intersection / union;
-    const overlap = intersection / Math.min(words1.size, words2.size);
-
-    // ⚖️ متوسط مرجّح
-    return (jaccard * 0.4) + (overlap * 0.6);
-  }
-
-  /**
-   * فلترة المنتجات - فقط المشابهة جداً
-   */
-  function filterSameProducts(items, originalTitle) {
-    if (!originalTitle || !items.length) return items;
-
-    const filtered = items.filter(it => {
-      if (!it || !it.title) return false;
-      const sim = titleSimilarity(originalTitle, it.title);
-      it._similarity = sim; // تخزين للمراجعة
-      return sim >= SIMILARITY_THRESHOLD;
-    });
-
-    console.log('[Smart Shopper] Filtered:', items.length, '→', filtered.length,
-                '(threshold:', SIMILARITY_THRESHOLD + ')');
-
-    return filtered;
-  }
-
-  /* ============================================
-     فحص صفحة المنتج
-     ============================================ */
   function isProductPage() {
     return /aliexpress\.(com|us)\/(item|i)\/\d+/i.test(location.href);
   }
@@ -605,30 +521,22 @@
       }
 
       if (resp.items && resp.items.length) {
-        // 🔑 فلترة النتائج للحصول على نفس المنتج فقط
-        const filtered = filterSameProducts(resp.items, currentSearchTitle);
+        cachedItems = cachedItems.concat(resp.items);
+        lastPageFetched = resp.lastPage || nextPage;
 
-        if (filtered.length) {
-          cachedItems = cachedItems.concat(filtered);
-          lastPageFetched = resp.lastPage || nextPage;
+        console.log('[Smart Shopper] Added', resp.items.length, 'items (total:', cachedItems.length, ')');
 
-          console.log('[Smart Shopper] Added', filtered.length, 'same products (total:', cachedItems.length, ')');
+        applySort();
 
-          applySort();
+        const list = document.getElementById('ss-list');
+        const scrollTop = list ? list.scrollTop : 0;
 
-          const list = document.getElementById('ss-list');
-          const scrollTop = list ? list.scrollTop : 0;
-
-          if (list) {
-            list.innerHTML = '';
-            renderedCount = 0;
-            setupImageObserver();
-            renderList(false, cachedSortedItems.length);
-            list.scrollTop = scrollTop;
-          }
-        } else {
-          console.log('[Smart Shopper] Page', nextPage, '- no matching products (all filtered out)');
-          lastPageFetched = resp.lastPage || nextPage;
+        if (list) {
+          list.innerHTML = '';
+          renderedCount = 0;
+          setupImageObserver();
+          renderList(false, cachedSortedItems.length);
+          list.scrollTop = scrollTop;
         }
       }
 
@@ -646,15 +554,12 @@
     panel.style.display = '';
 
     currentSearchTitle = title;
-    currentKeywords = extractKeywords(title);
     currentProductPrice = productPrice || 0;
     lastPageFetched = 0;
     hasMoreResults = true;
     fetchingMore = false;
 
     console.log('[Smart Shopper] === INITIAL SEARCH ===');
-    console.log('[Smart Shopper] Original title:', title.slice(0, 80));
-    console.log('[Smart Shopper] Keywords:', currentKeywords.join(', '));
 
     cachedItems = [];
     cachedSortedItems = [];
@@ -694,25 +599,19 @@
         return;
       }
 
-      // 🔑 فلترة النتائج الأولية
-      const rawItems = resp.items || [];
-      const filtered = filterSameProducts(rawItems, title);
-
-      cachedItems = filtered;
+      cachedItems = resp.items || [];
       cachedSearchUrl = resp.searchUrl || '';
       lastPageFetched = resp.lastPage || 1;
       hasMoreResults = resp.hasMore !== false;
       searchState.totalItems = cachedItems.length;
 
-      console.log('[Smart Shopper] Initial:', rawItems.length, '→', filtered.length, 'same products');
+      console.log('[Smart Shopper] Initial →', cachedItems.length, 'items (lastPage:', lastPageFetched, ')');
 
       renderList(true);
       updateProgress();
       updateFooter();
 
-      if (cachedItems.length === 0) {
-        message(T('noResults'));
-      }
+      if (cachedItems.length === 0) message(T('noResults'));
     });
   }
 
