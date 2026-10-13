@@ -50,7 +50,6 @@
      ============================================ */
   function isProductPage() {
     const url = location.href;
-    // يقبل: aliexpress.com/item/123456.html أو aliexpress.com/i/123456.html
     return /aliexpress\.(com|us)\/(item|i)\/\d+/i.test(url);
   }
 
@@ -76,13 +75,11 @@
       }
     } catch (e) {}
 
-    // احتياطي: OG Title
     const ogTitle = document.querySelector('meta[property="og:title"]');
     if (ogTitle && ogTitle.content && ogTitle.content.trim().length > 8) {
       return { title: ogTitle.content.trim().slice(0, 160) };
     }
 
-    // احتياطي أخير: عنوان الصفحة
     const title = (document.title || '').replace(/[|\-–—].*$/, '').trim();
     if (title.length > 8) return { title: title.slice(0, 160) };
 
@@ -349,12 +346,11 @@
   }
 
   /* ============================================
-     scan - يعمل بشكل دوري مع فحص صارم
+     scan - فحص دوري مع حماية صارمة
      ============================================ */
   function scan() {
     if (closed) return;
 
-    // فحص صارم: إذا لم نكن على صفحة منتج، احذف النافذة
     if (!isProductPage()) {
       const existing = document.getElementById(PANEL_ID);
       if (existing) existing.remove();
@@ -411,7 +407,7 @@
     }
   }).observe(document.body, { childList: true, subtree: true });
 
-  // فحص دوري كل 2.5 ثانية
+  // فحص دوري
   scan();
   setInterval(scan, 2500);
 })();
