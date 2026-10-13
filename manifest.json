@@ -3,10 +3,15 @@
   "name": "Smart Shopper",
   "version": "1.0.0",
   "description": "Trouvez le meilleur prix pour le même produit sur AliExpress",
-  "permissions": ["activeTab", "scripting", "storage"],
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage"
+  ],
   "host_permissions": [
     "https://*.aliexpress.com/*",
-    "https://*.aliexpress.us/*"
+    "https://*.aliexpress.us/*",
+    "https://smart-shopper.smailsuit11.workers.dev/*"
   ],
   "background": {
     "service_worker": "background/service-worker.js"
@@ -17,15 +22,8 @@
         "https://*.aliexpress.com/*",
         "https://*.aliexpress.us/*"
       ],
-      "js": [
-        "content/i18n.js",
-        "content/content.js",
-        "content/fullscreen.js"
-      ],
-      "css": [
-        "content/content.css",
-        "content/fullscreen.css"
-      ],
+      "js": ["content/i18n.js", "content/content.js", "content/fullscreen.js"],
+      "css": ["content/content.css", "content/fullscreen.css"],
       "run_at": "document_idle"
     }
   ],
