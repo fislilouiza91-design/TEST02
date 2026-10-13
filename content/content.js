@@ -1,6 +1,6 @@
 /* ============================================
    Smart Shopper - Content Script
-   Small panel (no refresh button)
+   Small panel (expand as header icon)
    ============================================ */
 (function () {
   'use strict';
@@ -49,7 +49,7 @@
     selling: '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8"/><path d="M14 7h7v7"/></svg>',
     minimize: '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"/></svg>',
     close: '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>',
-    expand: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>',
+    expand: '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>',
     plus: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>'
   };
 
@@ -218,6 +218,7 @@
           <div class="ss-sub">${esc(T('panelSubtitle'))}</div>
         </div>
         <div class="ss-header-btns">
+          <button class="ss-wbtn" id="ss-expand" title="${esc(T('expand') || 'Vue pleine page')}">${SVG_ICONS.expand}</button>
           <button class="ss-wbtn" id="ss-minimize" title="${esc(T('minimize'))}">${SVG_ICONS.minimize}</button>
           <button class="ss-wbtn ss-wbtn-close" id="ss-close" title="${esc(T('close'))}">${SVG_ICONS.close}</button>
         </div>
@@ -230,10 +231,6 @@
           <span class="ss-tab" data-i="3">${SVG_ICONS.discount}<span>${esc(T('tabBestDiscount'))}</span></span>
           <span class="ss-tab" data-i="4">${SVG_ICONS.selling}<span>${esc(T('tabBestSelling'))}</span></span>
         </div>
-        <button class="ss-expand-cta" id="ss-expand" title="${esc(T('expand') || 'Vue pleine page')}">
-          ${SVG_ICONS.expand}
-          <span>${esc(T('expand') || 'Vue pleine page')}</span>
-        </button>
         <div class="ss-progress" id="ss-progress"></div>
         <div class="ss-list" id="ss-list"></div>
         <div class="ss-footer" id="ss-footer"></div>
