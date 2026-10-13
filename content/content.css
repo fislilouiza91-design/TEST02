@@ -1,6 +1,6 @@
 /* ============================================
    Smart Shopper - Content Styles
-   Fluent Windows 11 style + Expand CTA + Load More
+   Fluent Windows 11 + Window controls + Load More
    ============================================ */
 
 * { box-sizing: border-box; }
@@ -196,77 +196,6 @@
 @keyframes ss-pulse {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.6; }
-}
-
-/* ============================================
-   Expand CTA Button (Icon + Text)
-   ============================================ */
-.ss-expand-cta {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    width: calc(100% - 20px);
-    margin: 8px 10px;
-    padding: 11px 16px;
-    background: linear-gradient(135deg, #ff5e3a 0%, #e62e04 100%);
-    color: #fff;
-    border: none;
-    border-radius: 10px;
-    cursor: pointer;
-    font-size: 12px;
-    font-weight: 800;
-    font-family: inherit;
-    letter-spacing: 0.5px;
-    text-transform: uppercase;
-    position: relative;
-    box-shadow: 0 4px 14px rgba(230, 46, 4, 0.4);
-    animation: ss-cta-pulse 2s ease-in-out infinite;
-    transition: transform 0.2s, box-shadow 0.2s;
-    overflow: hidden;
-}
-
-.ss-expand-cta svg {
-    display: block;
-    flex-shrink: 0;
-    width: 14px;
-    height: 14px;
-}
-
-.ss-expand-cta::after {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: -100%;
-    width: 100%;
-    height: 100%;
-    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
-    animation: ss-cta-shine 3s ease-in-out infinite;
-    pointer-events: none;
-}
-
-.ss-expand-cta:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 22px rgba(230, 46, 4, 0.55);
-    animation: none;
-}
-
-.ss-expand-cta:active {
-    transform: translateY(0) scale(0.98);
-}
-
-@keyframes ss-cta-pulse {
-    0%, 100% {
-        box-shadow: 0 4px 14px rgba(230, 46, 4, 0.4);
-    }
-    50% {
-        box-shadow: 0 4px 14px rgba(230, 46, 4, 0.4), 0 0 0 8px rgba(230, 46, 4, 0.1);
-    }
-}
-
-@keyframes ss-cta-shine {
-    0% { left: -100%; }
-    60%, 100% { left: 100%; }
 }
 
 /* ============================================
