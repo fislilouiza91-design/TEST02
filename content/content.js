@@ -1,6 +1,6 @@
 /* ============================================
    Smart Shopper - Content Script
-   Initial search + Load More button
+   Batches of 60 items, max 200, re-sort all
    ============================================ */
 (function () {
   'use strict';
@@ -8,7 +8,8 @@
   window.__smartShopper = true;
 
   const PANEL_ID = 'ss-panel';
-  const BATCH_SIZE = 15;
+  const RENDER_BATCH = 20;
+  const MAX_TOTAL_ITEMS = 200;
 
   const T = (key, vars) => (window.SS_I18N ? window.SS_I18N.t(key, vars) : key);
 
@@ -26,14 +27,12 @@
   let currentProductPrice = 0;
   let lastPageFetched = 0;
   let hasMoreResults = true;
-  let loadingMore = false;
+  let fetchingMore = false;
 
   let searchState = {
     running: false,
     complete: false,
     startTime: 0,
-    pagesTotal: 3,
-    pagesDone: 0,
     totalItems: 0
   };
 
@@ -153,21 +152,6 @@
       if (v > 0) return v;
     }
 
-    const selectors = [
-      '[class*="price--current" i]',
-      '[class*="currentPrice" i]',
-      '[class*="ProductPrice"] [class*="value"]',
-      '.product-price-value',
-      '[class*="sale-price" i]'
-    ];
-    for (const sel of selectors) {
-      const el = document.querySelector(sel);
-      if (el) {
-        const v = parseFloat(String(el.textContent).replace(/[^\d.]/g, ''));
-        if (v > 0) return v;
-      }
-    }
-
     return 0;
   }
 
@@ -204,17 +188,6 @@
     if (title.length > 8) return { title: title.slice(0, 160), price: price };
 
     return null;
-  }
-
-  function calcRemainingSec() {
-    if (searchState.complete) return 0;
-    if (!searchState.running) return 0;
-    if (searchState.pagesDone === 0) return 10;
-
-    const elapsedSec = (Date.now() - searchState.startTime) / 1000;
-    const avgPerPage = elapsedSec / searchState.pagesDone;
-    const remainingPages = Math.max(0, searchState.pagesTotal - searchState.pagesDone);
-    return Math.max(1, Math.ceil(remainingPages * avgPerPage));
   }
 
   /* ============================================
@@ -270,15 +243,7 @@
       setTimeout(() => { if (p) p.innerHTML = ''; }, 2000);
       return;
     }
-    const done = searchState.pagesDone;
-    const total = searchState.pagesTotal;
-    const pct = Math.round((done / total) * 100);
-    p.innerHTML = `
-      <div class="ss-progress-bar">
-        <div class="ss-progress-fill" style="width:${pct}%"></div>
-      </div>
-      <span class="ss-progress-text">${esc(T('pageText', { p: done, t: total, n: searchState.totalItems }))}</span>
-    `;
+    p.innerHTML = `<span class="ss-progress-text">${esc(T('loading'))}</span>`;
   }
 
   /* ============================================
@@ -310,7 +275,6 @@
     renderedCount = 0;
     renderList(true);
 
-    // 🔝 إعادة التمرير للأعلى
     const list = document.getElementById('ss-list');
     if (list) list.scrollTop = 0;
   }
@@ -332,10 +296,9 @@
         activateTab(tabEl, +tabEl.dataset.i);
         return;
       }
-      const remaining = calcRemainingSec();
       const svgMatch = tabEl.dataset.originalText.match(/<svg[^>]*>.*?<\/svg>/);
       const svg = svgMatch ? svgMatch[0] : '';
-      tabEl.innerHTML = svg + `<span>${esc(T('countingText', { s: remaining }))}</span>`;
+      tabEl.innerHTML = svg + `<span>${esc(T('countingText', { s: 3 }))}</span>`;
     };
 
     updateCountdown();
@@ -346,10 +309,10 @@
   function onScroll(e) {
     if (isLoadingMore) return;
     const list = e.target;
-    if (list.scrollTop + list.clientHeight >= list.scrollHeight - 400) loadMore();
+    if (list.scrollTop + list.clientHeight >= list.scrollHeight - 400) loadMoreInView();
   }
 
-  function loadMore() {
+  function loadMoreInView() {
     if (renderedCount >= cachedSortedItems.length) return;
     isLoadingMore = true;
     requestAnimationFrame(() => { renderList(false); isLoadingMore = false; });
@@ -453,7 +416,7 @@
   }
 
   /* ============================================
-     renderList مع دعم هدف مرن
+     renderList - عرض كل العناصر (مع Batched rendering)
      ============================================ */
   function renderList(reset, renderUpTo) {
     const l = document.getElementById('ss-list'); if (!l) return;
@@ -471,7 +434,7 @@
     const start = renderedCount;
     const end = renderUpTo !== undefined
       ? Math.min(renderUpTo, cachedSortedItems.length)
-      : Math.min(start + BATCH_SIZE, cachedSortedItems.length);
+      : Math.min(start + RENDER_BATCH, cachedSortedItems.length);
 
     if (start >= end) return;
 
@@ -490,7 +453,7 @@
   }
 
   /* ============================================
-     Footer with Load More button
+     Footer - زر المزيد
      ============================================ */
   function updateFooter() {
     const f = document.getElementById('ss-footer'); if (!f) return;
@@ -502,10 +465,15 @@
       html += `<a href="${esc(cachedSearchUrl)}" target="_blank" rel="noopener" class="ss-footer-link">${esc(T('viewAll'))}</a>`;
     }
 
-    // زر المزيد أو رسالة "لا مزيد"
-    if (searchState.complete && !searchState.running) {
-      if (hasMoreResults) {
-        if (loadingMore) {
+    // الزر / الحالات
+    if (!searchState.running) {
+      const reachedMax = cachedItems.length >= MAX_TOTAL_ITEMS;
+
+      if (reachedMax) {
+        // وصلنا للحد الأقصى
+        html += `<div class="ss-no-more">${cachedItems.length} / ${MAX_TOTAL_ITEMS} · ${esc(T('noMoreResults'))}</div>`;
+      } else if (hasMoreResults) {
+        if (fetchingMore) {
           html += `<button class="ss-load-more-btn ss-load-more-loading" disabled>
             <span class="ss-spinner"></span>
             <span>${esc(T('loading'))}</span>
@@ -516,44 +484,92 @@
             <span>${esc(T('loadMore'))}</span>
           </button>`;
         }
-      } else if (cachedItems.length > 0) {
-        html += `<div class="ss-no-more">${esc(T('noMoreResults'))}</div>`;
+      } else {
+        // لا مزيد من النتائج
+        if (cachedItems.length > 0) {
+          html += `<div class="ss-no-more">${esc(T('noMoreResults'))}</div>`;
+        }
       }
     }
 
-    // عداد العرض
+    // عداد
     const remaining = cachedSortedItems.length - renderedCount;
     if (remaining > 0) {
       html += `<div class="ss-loading-more">${renderedCount} / ${cachedSortedItems.length} · ${esc(T('scrollForMore'))}</div>`;
+    } else if (cachedItems.length > 0 && !searchState.running) {
+      html += `<div class="ss-loading-more">${cachedItems.length} ${esc(T('soldSuffix')) === 'vendus' ? 'produits' : 'items'}</div>`;
     }
 
     f.innerHTML = html;
 
-    // ربط زر المزيد
     const btn = document.getElementById('ss-load-more');
     if (btn) btn.onclick = onLoadMoreClick;
   }
 
   /* ============================================
-     عند الضغط على "المزيد"
+     عند الضغط على زر المزيد
      ============================================ */
   function onLoadMoreClick() {
-    if (loadingMore || !hasMoreResults || searchState.running) return;
+    if (fetchingMore || !hasMoreResults || searchState.running) return;
+    if (cachedItems.length >= MAX_TOTAL_ITEMS) return;
 
-    loadingMore = true;
+    fetchingMore = true;
     updateFooter();
 
     const nextPage = lastPageFetched + 1;
+    const existingIds = cachedItems.map(x => x.id);
 
-    console.log('[Smart Shopper] Load more from page', nextPage);
+    console.log('[Smart Shopper] Load more: page', nextPage, '| existing:', existingIds.length);
 
     chrome.runtime.sendMessage({
       type: 'SMART_LOAD_MORE',
       title: currentSearchTitle,
-      startPage: nextPage
+      startPage: nextPage,
+      existingIds: existingIds
     }, (resp) => {
+      fetchingMore = false;
+
       if (!resp || !resp.ok) {
-        loadingMore = false;
+        console.warn('[Smart Shopper] Load more failed:', resp && resp.error);
+        if (resp && resp.hasMore !== false) {
+          // خطأ مؤقت - أعد إظهار الزر
+          hasMoreResults = true;
+        } else {
+          hasMoreResults = false;
+        }
+        updateFooter();
+        return;
+      }
+
+      // ✅ إضافة العناصر الجديدة
+      if (resp.items && resp.items.length) {
+        cachedItems = cachedItems.concat(resp.items);
+        lastPageFetched = resp.lastPage || nextPage;
+
+        console.log('[Smart Shopper] Added', resp.items.length, 'items (total:', cachedItems.length, ')');
+
+        // 🔄 إعادة الترتيب الكامل + عرض كل القائمة من البداية
+        applySort();
+
+        const list = document.getElementById('ss-list');
+        const scrollTop = list ? list.scrollTop : 0;
+
+        if (list) {
+          list.innerHTML = '';
+          renderedCount = 0;
+          setupImageObserver();
+          // عرض كل العناصر مباشرة (لأن العدد لن يتجاوز 200)
+          renderList(false, cachedSortedItems.length);
+          list.scrollTop = scrollTop;
+        }
+      }
+
+      hasMoreResults = resp.hasMore !== false;
+      updateFooter();
+
+      if (cachedItems.length >= MAX_TOTAL_ITEMS) {
+        console.log('[Smart Shopper] Reached MAX_TOTAL_ITEMS:', MAX_TOTAL_ITEMS);
+        hasMoreResults = false;
         updateFooter();
       }
     });
@@ -571,10 +587,9 @@
     currentProductPrice = productPrice || 0;
     lastPageFetched = 0;
     hasMoreResults = true;
-    loadingMore = false;
+    fetchingMore = false;
 
     console.log('[Smart Shopper] === INITIAL SEARCH ===');
-    console.log('[Smart Shopper] Price for comparison:', currentProductPrice);
 
     cachedItems = [];
     cachedSortedItems = [];
@@ -593,8 +608,6 @@
       running: true,
       complete: false,
       startTime: Date.now(),
-      pagesTotal: 3,
-      pagesDone: 0,
       totalItems: 0
     };
 
@@ -602,101 +615,35 @@
     updateProgress();
 
     chrome.runtime.sendMessage({ type: 'SMART_SEARCH', title }, resp => {
-      if (!resp || !document.getElementById(PANEL_ID)) return;
+      searchState.running = false;
+      searchState.complete = true;
+
+      if (!resp || !document.getElementById(PANEL_ID)) {
+        updateFooter();
+        return;
+      }
+
       if (!resp.ok) {
-        searchState.running = false;
         message(T('errorContact'));
+        updateFooter();
         return;
       }
 
       cachedItems = resp.items || [];
       cachedSearchUrl = resp.searchUrl || '';
-      searchState.pagesTotal = resp.totalPages || 3;
-      searchState.pagesDone = resp.page || 1;
-      searchState.totalItems = cachedItems.length;
       lastPageFetched = resp.lastPage || 1;
       hasMoreResults = resp.hasMore !== false;
+      searchState.totalItems = cachedItems.length;
 
-      console.log('[Smart Shopper] Page 1 →', cachedItems.length, 'items (lastPage:', lastPageFetched, ', hasMore:', hasMoreResults, ')');
+      console.log('[Smart Shopper] Initial →', cachedItems.length, 'items (lastPage:', lastPageFetched, ')');
 
       renderList(true);
-      updateProgress();
-    });
-  }
-
-  /* ============================================
-     استقبال التحديثات
-     ============================================ */
-  chrome.runtime.onMessage.addListener((msg) => {
-    if (!msg) return;
-
-    if (msg.type === 'SMART_SEARCH_UPDATE') {
-      const newItems = msg.items || [];
-      if (!newItems.length) return;
-
-      const existingIds = new Set(cachedItems.map(x => x.id));
-      const uniqueNew = newItems.filter(x => !existingIds.has(x.id));
-
-      if (uniqueNew.length) {
-        cachedItems = cachedItems.concat(uniqueNew);
-        cachedSearchUrl = msg.searchUrl || cachedSearchUrl;
-        lastPageFetched = msg.lastPage || lastPageFetched;
-        hasMoreResults = msg.hasMore !== false;
-
-        if (!msg.isLoadMore) {
-          searchState.pagesDone = msg.page || (searchState.pagesDone + 1);
-          searchState.pagesTotal = msg.totalPages || searchState.pagesTotal;
-        }
-        searchState.totalItems = cachedItems.length;
-
-        console.log('[Smart Shopper] Update:', uniqueNew.length, 'items (total:', cachedItems.length, ', lastPage:', lastPageFetched, ', hasMore:', hasMoreResults, ')');
-
-        // إعادة بناء القائمة مع الحفاظ على ما كان ظاهراً
-        const prevRendered = Math.max(renderedCount, BATCH_SIZE);
-        const list = document.getElementById('ss-list');
-        const scrollTop = list ? list.scrollTop : 0;
-
-        applySort();
-
-        if (list) {
-          list.innerHTML = '';
-          renderedCount = 0;
-          setupImageObserver();
-          renderList(false, Math.min(prevRendered + uniqueNew.length, cachedSortedItems.length));
-          list.scrollTop = scrollTop;
-        }
-
-        updateFooter();
-        if (!msg.isLoadMore) updateProgress();
-      }
-    }
-
-    if (msg.type === 'SMART_SEARCH_DONE') {
-      console.log('[Smart Shopper] === INITIAL SEARCH DONE ===');
-      searchState.running = false;
-      searchState.complete = true;
-      searchState.totalItems = msg.totalItems || cachedItems.length;
-      lastPageFetched = msg.lastPage || lastPageFetched;
-      hasMoreResults = msg.hasMore !== false;
-
-      if (pendingTabEl) {
-        activateTab(pendingTabEl, +pendingTabEl.dataset.i);
-      }
-
       updateProgress();
       updateFooter();
 
       if (cachedItems.length === 0) message(T('noResults'));
-    }
-
-    if (msg.type === 'SMART_LOAD_MORE_DONE') {
-      console.log('[Smart Shopper] === LOAD MORE DONE ===');
-      loadingMore = false;
-      lastPageFetched = msg.lastPage || lastPageFetched;
-      hasMoreResults = msg.hasMore !== false;
-      updateFooter();
-    }
-  });
+    });
+  }
 
   /* ============================================
      Scan
