@@ -1,6 +1,6 @@
 /* ============================================
    Smart Shopper - Content Script
-   Only shows on real product pages
+   Self-fetch (uses page's own cookies + origin)
    ============================================ */
 (function () {
   'use strict';
@@ -9,7 +9,11 @@
 
   const PANEL_ID = 'ss-panel';
   const BATCH_SIZE = 15;
-  const ESTIMATED_SEARCH_TIME = 9000;
+  const ESTIMATED_SEARCH_TIME = 10000;
+  const MAX_PAGES = 6;
+  const PARALLEL_BATCH = 2;
+  const DELAY_BETWEEN_BATCHES = 800;
+  const MAX_RETRIES = 3;
 
   const T = (key) => (window.SS_I18N ? window.SS_I18N.t(key) : key);
 
@@ -45,12 +49,8 @@
     return out;
   }
 
-  /* ============================================
-     فحص صارم: هل نحن على صفحة منتج؟
-     ============================================ */
   function isProductPage() {
-    const url = location.href;
-    return /aliexpress\.(com|us)\/(item|i)\/\d+/i.test(url);
+    return /aliexpress\.(com|us)\/(item|i)\/\d+/i.test(location.href);
   }
 
   function detectProduct() {
@@ -319,6 +319,239 @@
     }
   }
 
+  /* ============================================
+     FETCH - from the page itself
+     ============================================ */
+  async function fetchPageWithRetry(url) {
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        console.log('[Smart Shopper] Fetch attempt', attempt, ':', url);
+        const res = await fetch(url, {
+          credentials: 'same-origin',
+          headers: {
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': navigator.language || 'fr-FR,fr;q=0.9,en;q=0.8'
+          }
+        });
+
+        console.log('[Smart Shopper] HTTP', res.status, 'size:', res.headers.get('content-length') || '?');
+
+        if (res.status === 200) {
+          const html = await res.text();
+          console.log('[Smart Shopper] HTML size:', html.length);
+          return html;
+        }
+
+        if (res.status === 429 || res.status === 403) {
+          const wait = 1500 * attempt;
+          console.warn('[Smart Shopper] Blocked (' + res.status + '), waiting', wait, 'ms');
+          await new Promise(r => setTimeout(r, wait));
+          continue;
+        }
+
+        if (res.status === 404) return null;
+        await new Promise(r => setTimeout(r, 800 * attempt));
+      } catch (e) {
+        console.warn('[Smart Shopper] Fetch error attempt', attempt, ':', e.message);
+        if (attempt < MAX_RETRIES) {
+          await new Promise(r => setTimeout(r, 800 * attempt));
+        }
+      }
+    }
+    return null;
+  }
+
+  /* ---------- JSON extraction ---------- */
+  function extractJsonArray(html, marker) {
+    const i = html.indexOf(marker);
+    if (i < 0) return null;
+    const j = html.indexOf('[', i);
+    if (j < 0) return null;
+    let depth = 0, inStr = false, esc2 = false;
+    for (let k = j; k < html.length; k++) {
+      const c = html[k];
+      if (inStr) {
+        if (esc2) esc2 = false;
+        else if (c === '\\') esc2 = true;
+        else if (c === '"') inStr = false;
+        continue;
+      }
+      if (c === '"') { inStr = true; continue; }
+      if (c === '[') depth++;
+      else if (c === ']') { depth--; if (depth === 0) return html.slice(j, k + 1); }
+    }
+    return null;
+  }
+
+  function extractText(v) {
+    if (v == null) return '';
+    if (typeof v === 'string') return v;
+    if (typeof v === 'number') return String(v);
+    if (typeof v === 'boolean') return v ? 'true' : '';
+    if (typeof v === 'object') {
+      const keys = ['displayTitle', 'text', 'title', 'value', 'name',
+        'formatedActivityPrice', 'formatedPrice', 'minActivityPrice', 'minPrice',
+        'price', 'desc', 'label'];
+      for (const k of keys) {
+        if (v[k] != null && typeof v[k] !== 'object') return String(v[k]);
+      }
+      for (const k in v) {
+        if (typeof v[k] === 'string' && v[k].length > 0) return v[k];
+      }
+      return '';
+    }
+    return String(v);
+  }
+
+  function clean(s) {
+    return String(s).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+  }
+
+  function parseItems(html) {
+    const arrText = extractJsonArray(html, '"itemList"') || extractJsonArray(html, '"gridItems"');
+    if (!arrText) {
+      console.warn('[Smart Shopper] No itemList marker found');
+      return [];
+    }
+    let arr;
+    try { arr = JSON.parse(arrText); } catch (e) {
+      console.warn('[Smart Shopper] JSON parse failed:', e.message);
+      return [];
+    }
+    if (!Array.isArray(arr)) return [];
+
+    const out = [];
+    for (const o of arr) {
+      try {
+        if (!o || typeof o !== 'object') continue;
+        const id = o.productId || o.id || (o.item && o.item.productId);
+        if (!id) continue;
+
+        const rawTitle = o.title || (o.item && o.item.title) || o.displayTitle || '';
+        const title = clean(extractText(rawTitle));
+
+        let img = '';
+        if (o.image) {
+          if (typeof o.image === 'string') img = o.image;
+          else img = o.image.imgUrl || o.image.imageUrl || o.image.url || '';
+        }
+        if (!img && o.picUrl) {
+          if (typeof o.picUrl === 'string') img = o.picUrl;
+          else img = o.picUrl.imgUrl || o.picUrl.url || '';
+        }
+        if (img && img.startsWith('//')) img = 'https:' + img;
+
+        const p = o.prices || {};
+        const sale = p.salePrice || {};
+        const orig = p.originalPrice || {};
+        const price = extractText(sale.formatedActivityPrice || sale.formatedPrice ||
+                      sale.minActivityPrice || sale.minPrice || p.formatedPrice || p.minPrice || '');
+        const oldPrice = extractText(orig.formatedPrice || orig.minPrice || '');
+        const discount = extractText(o.discount || sale.discount || '');
+
+        const rating = extractText(
+          (o.evaluation && (o.evaluation.starRating || o.evaluation.averageStar)) ||
+          o.averageStarRate || o.starRating || ''
+        );
+        const sold = extractText(o.tradeDesc || o.sold || o.soldCount || '');
+
+        out.push({
+          id: String(id),
+          title: title || 'Produit similaire',
+          img, price, oldPrice, discount, rating, sold,
+          link: 'https://www.aliexpress.com/item/' + id + '.html'
+        });
+      } catch (e) {}
+    }
+    console.log('[Smart Shopper] Parsed', out.length, 'items');
+    return out;
+  }
+
+  function fallbackIds(html) {
+    const re = /"productId"\s*:\s*"(\d{6,})"/g;
+    const seen = new Set(); const out = [];
+    let m;
+    while ((m = re.exec(html))) {
+      if (seen.has(m[1])) continue;
+      seen.add(m[1]);
+      out.push({
+        id: m[1], title: 'Produit similaire', img: '', price: '', oldPrice: '',
+        discount: '', rating: '', sold: '',
+        link: 'https://www.aliexpress.com/item/' + m[1] + '.html'
+      });
+    }
+    return out;
+  }
+
+  /* ============================================
+     PERFORM SEARCH - all from page
+     ============================================ */
+  async function performSearch(title) {
+    const q = encodeURIComponent((title || '').slice(0, 90));
+    const baseUrl = 'https://www.aliexpress.com/wholesale?SearchText=' + q + '&catId=0';
+    cachedSearchUrl = baseUrl;
+
+    console.log('[Smart Shopper] === SEARCH START ===');
+    console.log('[Smart Shopper] Query:', q.slice(0, 60));
+
+    const seenIds = new Set();
+    let totalFetched = 0;
+
+    for (let batch = 0; batch < MAX_PAGES; batch += PARALLEL_BATCH) {
+      if (closed) return;
+
+      const pages = [];
+      for (let i = 0; i < PARALLEL_BATCH && (batch + i) < MAX_PAGES; i++) {
+        pages.push(batch + i + 1);
+      }
+
+      const htmls = await Promise.all(pages.map(p => fetchPageWithRetry(baseUrl + '&page=' + p)));
+
+      const newItems = [];
+      for (const html of htmls) {
+        if (!html) continue;
+        let items = parseItems(html);
+        if (!items.length) items = fallbackIds(html);
+        for (const it of items) {
+          if (!it || !it.id || seenIds.has(it.id)) continue;
+          seenIds.add(it.id);
+          newItems.push(it);
+        }
+      }
+
+      if (newItems.length > 0) {
+        totalFetched += newItems.length;
+        cachedItems = cachedItems.concat(newItems);
+        console.log('[Smart Shopper] Batch +', newItems.length, '(total:', totalFetched, ')');
+
+        const list = document.getElementById('ss-list');
+        const scrollTop = list ? list.scrollTop : 0;
+        applySort();
+        if (list) {
+          list.innerHTML = '';
+          renderedCount = 0;
+          setupImageObserver();
+          renderList(false);
+          list.scrollTop = scrollTop;
+        }
+        updateFooter();
+      }
+
+      if (batch + PARALLEL_BATCH < MAX_PAGES) {
+        await new Promise(r => setTimeout(r, DELAY_BETWEEN_BATCHES));
+      }
+    }
+
+    console.log('[Smart Shopper] === DONE === Total:', totalFetched);
+    searchComplete = true;
+    if (pendingTabEl) activateTab(pendingTabEl, +pendingTabEl.dataset.i);
+    updateFooter();
+
+    if (totalFetched === 0) {
+      message(T('noResults'));
+    }
+  }
+
   function runSearch(title) {
     buildPanel();
     const panel = document.getElementById(PANEL_ID);
@@ -336,18 +569,9 @@
     });
     skeleton();
 
-    chrome.runtime.sendMessage({ type: 'SMART_SEARCH', title }, resp => {
-      if (!resp || !document.getElementById(PANEL_ID)) return;
-      if (!resp.ok) { message(T('errorContact')); return; }
-      cachedItems = resp.items || [];
-      cachedSearchUrl = resp.searchUrl || '';
-      renderList(true);
-    });
+    performSearch(title);
   }
 
-  /* ============================================
-     scan - فحص دوري مع حماية صارمة
-     ============================================ */
   function scan() {
     if (closed) return;
 
@@ -368,37 +592,7 @@
     runSearch(p.title);
   }
 
-  chrome.runtime.onMessage.addListener((msg) => {
-    if (!msg) return;
-    if (msg.type === 'SMART_SEARCH_UPDATE') {
-      const newItems = msg.items || [];
-      if (!newItems.length) return;
-      const existingIds = new Set(cachedItems.map(x => x.id));
-      const uniqueNew = newItems.filter(x => !existingIds.has(x.id));
-      if (uniqueNew.length) {
-        cachedItems = cachedItems.concat(uniqueNew);
-        cachedSearchUrl = msg.searchUrl || cachedSearchUrl;
-        const list = document.getElementById('ss-list');
-        const scrollTop = list ? list.scrollTop : 0;
-        applySort();
-        if (list) {
-          list.innerHTML = '';
-          renderedCount = 0;
-          setupImageObserver();
-          renderList(false);
-          list.scrollTop = scrollTop;
-        }
-        updateFooter();
-      }
-    }
-    if (msg.type === 'SMART_SEARCH_DONE') {
-      searchComplete = true;
-      if (pendingTabEl) activateTab(pendingTabEl, +pendingTabEl.dataset.i);
-      updateFooter();
-    }
-  });
-
-  // مراقبة تغييرات URL (SPA)
+  // SPA URL monitoring
   let lastUrl = location.href;
   new MutationObserver(() => {
     if (location.href !== lastUrl) {
@@ -407,7 +601,6 @@
     }
   }).observe(document.body, { childList: true, subtree: true });
 
-  // فحص دوري
   scan();
   setInterval(scan, 2500);
 })();
