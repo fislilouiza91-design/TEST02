@@ -1,11 +1,18 @@
 /* ============================================
    Smart Shopper - Background Service Worker
-   Fetches search results from AliExpress
+   With retry + UA rotation + detailed logging
    ============================================ */
 
-const MAX_PAGES = 8;
-const PARALLEL_BATCH = 3;
-const DELAY_BETWEEN_BATCHES = 400;
+const MAX_PAGES = 6;
+const PARALLEL_BATCH = 2;
+const DELAY_BETWEEN_BATCHES = 800;
+const MAX_RETRIES = 3;
+
+const USER_AGENTS = [
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36',
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Safari/537.36',
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15'
+];
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (!msg || msg.type !== 'SMART_SEARCH') return;
@@ -15,6 +22,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     try {
       const q = encodeURIComponent((msg.title || '').slice(0, 90));
       const baseUrl = 'https://www.aliexpress.com/wholesale?SearchText=' + q + '&catId=0';
+
+      console.log('[Smart Shopper BG] === SEARCH START ===');
+      console.log('[Smart Shopper BG] Query:', q.slice(0, 60));
 
       const seenIds = new Set();
       let firstBatchSent = false;
@@ -26,7 +36,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           pages.push(batch + i + 1);
         }
 
-        const results = await Promise.all(pages.map(p => fetchPage(baseUrl, p)));
+        const results = await Promise.all(pages.map(p => fetchPageWithRetry(baseUrl, p)));
+
         const newItems = [];
         let emptyPages = 0;
 
@@ -40,6 +51,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         }
 
         totalFetched += newItems.length;
+        console.log('[Smart Shopper BG] Batch', Math.floor(batch / PARALLEL_BATCH) + 1,
+                    '- pages:', pages.join(','), '- new:', newItems.length, '- total:', totalFetched);
 
         if (newItems.length > 0 && tabId) {
           if (!firstBatchSent) {
@@ -52,15 +65,25 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           }
         }
 
-        if (emptyPages === pages.length) break;
-        if (batch + PARALLEL_BATCH < MAX_PAGES) await new Promise(r => setTimeout(r, DELAY_BETWEEN_BATCHES));
+        if (emptyPages === pages.length) {
+          console.log('[Smart Shopper BG] All pages empty. Stopping.');
+          break;
+        }
+        if (batch + PARALLEL_BATCH < MAX_PAGES) {
+          await new Promise(r => setTimeout(r, DELAY_BETWEEN_BATCHES));
+        }
       }
+
+      console.log('[Smart Shopper BG] === DONE === Total:', totalFetched);
 
       if (tabId) {
         try { chrome.tabs.sendMessage(tabId, { type: 'SMART_SEARCH_DONE', total: totalFetched }); } catch (e) {}
       }
-      if (!firstBatchSent) sendResponse({ ok: true, items: [], searchUrl: baseUrl, done: true });
+      if (!firstBatchSent) {
+        sendResponse({ ok: true, items: [], searchUrl: baseUrl, done: true, count: 0 });
+      }
     } catch (e) {
+      console.error('[Smart Shopper BG] Error:', e);
       sendResponse({ ok: false, error: String(e) });
     }
   })();
@@ -68,6 +91,56 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   return true;
 });
 
+/* ---------- جلب صفحة مع Retry ---------- */
+async function fetchPageWithRetry(baseUrl, page) {
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const url = baseUrl + '&page=' + page;
+      const ua = USER_AGENTS[(attempt - 1) % USER_AGENTS.length];
+
+      const res = await fetch(url, {
+        credentials: 'include',
+        headers: {
+          'Accept-Language': 'en-US,en;q=0.9',
+          'User-Agent': ua,
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Cache-Control': 'no-cache'
+        }
+      });
+
+      console.log('[Smart Shopper BG] Page', page, 'attempt', attempt, '→ HTTP', res.status);
+
+      if (res.status === 200) {
+        const html = await res.text();
+        console.log('[Smart Shopper BG] Page', page, 'HTML size:', html.length);
+        let items = parseItems(html);
+        if (!items.length) items = fallbackIds(html);
+        console.log('[Smart Shopper BG] Page', page, '→', items.length, 'items');
+        return items;
+      }
+
+      if (res.status === 429 || res.status === 403) {
+        const wait = 1500 * attempt;
+        console.warn('[Smart Shopper BG] Blocked (' + res.status + '), waiting', wait, 'ms');
+        await new Promise(r => setTimeout(r, wait));
+        continue;
+      }
+
+      if (res.status === 404) return [];
+
+      await new Promise(r => setTimeout(r, 800 * attempt));
+    } catch (e) {
+      console.warn('[Smart Shopper BG] Fetch error attempt', attempt, ':', e.message);
+      if (attempt < MAX_RETRIES) {
+        await new Promise(r => setTimeout(r, 800 * attempt));
+      }
+    }
+  }
+  console.warn('[Smart Shopper BG] Page', page, 'failed after all retries');
+  return [];
+}
+
+/* ---------- استخراج النص من أي قيمة ---------- */
 function extractText(v) {
   if (v == null) return '';
   if (typeof v === 'string') return v;
@@ -88,32 +161,18 @@ function extractText(v) {
   return String(v);
 }
 
-async function fetchPage(baseUrl, page) {
-  try {
-    const url = baseUrl + '&page=' + page;
-    const res = await fetch(url, {
-      credentials: 'include',
-      headers: {
-        'Accept-Language': 'en-US,en;q=0.9',
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
-      }
-    });
-    if (!res.ok) return [];
-    const html = await res.text();
-    let items = parseItems(html);
-    if (!items.length) items = fallbackIds(html);
-    return items;
-  } catch (e) {
-    return [];
-  }
-}
-
+/* ---------- استخراج المنتجات ---------- */
 function parseItems(html) {
   const arrText = extractJsonArray(html, '"itemList"') || extractJsonArray(html, '"gridItems"');
-  if (!arrText) return [];
+  if (!arrText) {
+    console.warn('[Smart Shopper BG] No itemList marker found');
+    return [];
+  }
   let arr;
-  try { arr = JSON.parse(arrText); } catch (e) { return []; }
+  try { arr = JSON.parse(arrText); } catch (e) {
+    console.warn('[Smart Shopper BG] JSON parse failed:', e.message);
+    return [];
+  }
   if (!Array.isArray(arr)) return [];
 
   const out = [];
