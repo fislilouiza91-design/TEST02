@@ -1,6 +1,6 @@
 /* ============================================
    Smart Shopper - Content Styles
-   With SVG icons + Currency symbol + Price comparison
+   Green (cheaper) + Red (higher) - No gray
    ============================================ */
 
 * { box-sizing: border-box; }
@@ -87,7 +87,7 @@
 }
 
 /* ============================================
-   Tabs with SVG icons
+   Tabs
    ============================================ */
 .ss-tabs {
     display: flex;
@@ -122,9 +122,7 @@
     display: block;
 }
 
-.ss-tab span {
-    line-height: 1;
-}
+.ss-tab span { line-height: 1; }
 
 .ss-tab.active {
     color: #fff;
@@ -133,9 +131,7 @@
     box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
 }
 
-.ss-tab.active svg {
-    opacity: 1;
-}
+.ss-tab.active svg { opacity: 1; }
 
 .ss-tab:hover:not(.active):not(.ss-tab-counting) {
     background: #efefef;
@@ -297,7 +293,7 @@
 .ss-no-info { color: #bbb; font-size: 10px; font-style: italic; }
 
 /* ============================================
-   Discount Box - Default (Green = cheaper or equal)
+   Discount Box - 🟢 Green (default: price <= current)
    ============================================ */
 .ss-discount-box {
     flex-shrink: 0;
@@ -333,17 +329,8 @@
     white-space: nowrap;
 }
 
-.ss-discount-box.ss-no-discount {
-    background: #f5f5f5;
-    border-color: #e8e8e8;
-}
-.ss-discount-box.ss-no-discount .ss-price-main {
-    color: #666;
-    font-size: 11px;
-}
-
 /* ============================================
-   💰 Higher price than current product (Red/Orange)
+   🔴 Red (price > current product price)
    ============================================ */
 .ss-discount-box.ss-higher-price {
     background: #fff0ee;
@@ -415,12 +402,8 @@
 }
 
 /* ============================================
-   RTL Support (Arabic, Hebrew, Urdu, Persian)
+   RTL Support
    ============================================ */
-#ss-panel[dir="rtl"] {
-    direction: rtl;
-}
+#ss-panel[dir="rtl"] { direction: rtl; }
 #ss-panel[dir="rtl"] .ss-title,
-#ss-panel[dir="rtl"] .ss-sub {
-    text-align: right;
-}
+#ss-panel[dir="rtl"] .ss-sub { text-align: right; }
