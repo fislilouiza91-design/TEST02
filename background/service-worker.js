@@ -1,120 +1,204 @@
 /* ============================================
    Smart Shopper - Background Service Worker
-   Sequential streaming - max 50 items
+   Initial search + Load More with pagination
    ============================================ */
 
-const MAX_PAGES = 3;              // 3 صفحات كحد أقصى
-const MAX_ITEMS = 50;             // 50 منتج كحد أقصى
-const DELAY_BETWEEN_PAGES = 4000; // 4 ثواني بين كل صفحة
+const PAGES_PER_BATCH = 3;
+const MAX_TOTAL_PAGES = 30;
+const DELAY_BETWEEN_PAGES = 2500;
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  if (!msg || msg.type !== 'SMART_SEARCH') return;
-  const tabId = sender.tab && sender.tab.id;
+  if (!msg) return;
 
-  (async () => {
-    try {
-      const q = encodeURIComponent((msg.title || '').slice(0, 90));
-      const baseUrl = 'https://www.aliexpress.com/wholesale?SearchText=' + q + '&catId=0';
+  if (msg.type === 'SMART_SEARCH') {
+    handleSearch(msg, sender, sendResponse);
+    return true;
+  }
 
-      console.log('[Smart Shopper BG] === SEARCH START ===');
-      console.log('[Smart Shopper BG] Max pages:', MAX_PAGES, '| Max items:', MAX_ITEMS);
-
-      const seenIds = new Set();
-      let totalFetched = 0;
-      let firstSent = false;
-
-      for (let page = 1; page <= MAX_PAGES; page++) {
-        // إذا وصلنا للحد الأقصى، توقف
-        if (totalFetched >= MAX_ITEMS) {
-          console.log('[Smart Shopper BG] Reached MAX_ITEMS limit. Stopping.');
-          break;
-        }
-
-        console.log('[Smart Shopper BG] Fetching page', page);
-
-        const url = page === 1 ? baseUrl : baseUrl + '&page=' + page;
-        const items = await fetchPage(url);
-
-        console.log('[Smart Shopper BG] Page', page, '→', items.length, 'items');
-
-        const newItems = [];
-        for (const it of items) {
-          if (!it || !it.id || seenIds.has(it.id)) continue;
-          // توقف إذا وصلنا 50
-          if (totalFetched + newItems.length >= MAX_ITEMS) break;
-          seenIds.add(it.id);
-          newItems.push(it);
-        }
-
-        if (newItems.length === 0 && page > 1) {
-          console.log('[Smart Shopper BG] Empty page', page, '- stopping');
-          break;
-        }
-
-        totalFetched += newItems.length;
-
-        if (newItems.length > 0 && tabId) {
-          if (!firstSent) {
-            sendResponse({
-              ok: true,
-              items: newItems,
-              page: page,
-              totalPages: MAX_PAGES,
-              totalItems: totalFetched,
-              searchUrl: baseUrl,
-              done: false
-            });
-            firstSent = true;
-          } else {
-            try {
-              chrome.tabs.sendMessage(tabId, {
-                type: 'SMART_SEARCH_UPDATE',
-                items: newItems,
-                page: page,
-                totalPages: MAX_PAGES,
-                totalItems: totalFetched,
-                searchUrl: baseUrl
-              });
-            } catch (e) {}
-          }
-        }
-
-        // إذا وصلنا الحد، توقف
-        if (totalFetched >= MAX_ITEMS) {
-          console.log('[Smart Shopper BG] Reached MAX_ITEMS after page', page);
-          break;
-        }
-
-        // انتظار بين الصفحات
-        if (page < MAX_PAGES) {
-          await new Promise(r => setTimeout(r, DELAY_BETWEEN_PAGES));
-        }
-      }
-
-      console.log('[Smart Shopper BG] === DONE === Total:', totalFetched);
-
-      if (tabId) {
-        try {
-          chrome.tabs.sendMessage(tabId, {
-            type: 'SMART_SEARCH_DONE',
-            totalItems: totalFetched
-          });
-        } catch (e) {}
-      }
-
-      if (!firstSent) {
-        sendResponse({ ok: true, items: [], searchUrl: baseUrl, done: true });
-      }
-    } catch (e) {
-      console.error('[Smart Shopper BG] Error:', e);
-      sendResponse({ ok: false, error: String(e) });
-    }
-  })();
+  if (msg.type === 'SMART_LOAD_MORE') {
+    handleLoadMore(msg, sender, sendResponse);
+    return true;
+  }
 
   return true;
 });
 
-/* ---------- جلب صفحة واحدة ---------- */
+/* ============================================
+   البحث الأولي (3 صفحات)
+   ============================================ */
+async function handleSearch(msg, sender, sendResponse) {
+  const tabId = sender.tab && sender.tab.id;
+
+  try {
+    const q = encodeURIComponent((msg.title || '').slice(0, 90));
+    const baseUrl = 'https://www.aliexpress.com/wholesale?SearchText=' + q + '&catId=0';
+
+    console.log('[Smart Shopper BG] === INITIAL SEARCH ===');
+
+    const seenIds = new Set();
+    let totalFetched = 0;
+    let firstSent = false;
+    let lastPage = 0;
+    let hasMore = true;
+
+    for (let page = 1; page <= PAGES_PER_BATCH; page++) {
+      const url = page === 1 ? baseUrl : baseUrl + '&page=' + page;
+      const items = await fetchPage(url);
+
+      if (items.length === 0) {
+        hasMore = false;
+        break;
+      }
+
+      const newItems = [];
+      for (const it of items) {
+        if (!it || !it.id || seenIds.has(it.id)) continue;
+        seenIds.add(it.id);
+        newItems.push(it);
+      }
+
+      lastPage = page;
+      totalFetched += newItems.length;
+
+      console.log('[Smart Shopper BG] Page', page, '→ +' + newItems.length, 'items');
+
+      if (newItems.length > 0 && tabId) {
+        if (!firstSent) {
+          sendResponse({
+            ok: true,
+            items: newItems,
+            page: page,
+            totalPages: PAGES_PER_BATCH,
+            totalItems: totalFetched,
+            searchUrl: baseUrl,
+            lastPage: page,
+            hasMore: hasMore,
+            done: false
+          });
+          firstSent = true;
+        } else {
+          try {
+            chrome.tabs.sendMessage(tabId, {
+              type: 'SMART_SEARCH_UPDATE',
+              items: newItems,
+              page: page,
+              totalPages: PAGES_PER_BATCH,
+              totalItems: totalFetched,
+              searchUrl: baseUrl,
+              lastPage: page,
+              hasMore: hasMore
+            });
+          } catch (e) {}
+        }
+      }
+
+      if (page < PAGES_PER_BATCH && hasMore) {
+        await new Promise(r => setTimeout(r, DELAY_BETWEEN_PAGES));
+      }
+    }
+
+    if (tabId) {
+      try {
+        chrome.tabs.sendMessage(tabId, {
+          type: 'SMART_SEARCH_DONE',
+          totalItems: totalFetched,
+          lastPage: lastPage,
+          hasMore: hasMore
+        });
+      } catch (e) {}
+    }
+
+    if (!firstSent) {
+      sendResponse({
+        ok: true, items: [], searchUrl: baseUrl, done: true,
+        hasMore: false, lastPage: 0
+      });
+    }
+  } catch (e) {
+    console.error('[Smart Shopper BG] Search error:', e);
+    sendResponse({ ok: false, error: String(e) });
+  }
+}
+
+/* ============================================
+   المزيد (3 صفحات إضافية)
+   ============================================ */
+async function handleLoadMore(msg, sender, sendResponse) {
+  const tabId = sender.tab && sender.tab.id;
+
+  try {
+    const q = encodeURIComponent((msg.title || '').slice(0, 90));
+    const baseUrl = 'https://www.aliexpress.com/wholesale?SearchText=' + q + '&catId=0';
+    const startPage = Math.max(1, parseInt(msg.startPage) || 1);
+
+    console.log('[Smart Shopper BG] === LOAD MORE from page', startPage, '===');
+
+    let totalFetched = 0;
+    let lastPage = startPage - 1;
+    let hasMore = true;
+
+    const endPage = Math.min(startPage + PAGES_PER_BATCH - 1, MAX_TOTAL_PAGES);
+
+    for (let page = startPage; page <= endPage; page++) {
+      const url = baseUrl + '&page=' + page;
+      const items = await fetchPage(url);
+
+      if (items.length === 0) {
+        hasMore = false;
+        break;
+      }
+
+      lastPage = page;
+      totalFetched += items.length;
+
+      console.log('[Smart Shopper BG] Page', page, '→', items.length, 'items');
+
+      if (tabId) {
+        try {
+          chrome.tabs.sendMessage(tabId, {
+            type: 'SMART_SEARCH_UPDATE',
+            items: items,
+            page: page,
+            totalPages: endPage,
+            totalItems: totalFetched,
+            searchUrl: baseUrl,
+            lastPage: page,
+            hasMore: hasMore,
+            isLoadMore: true
+          });
+        } catch (e) {}
+      }
+
+      if (page < endPage && hasMore) {
+        await new Promise(r => setTimeout(r, DELAY_BETWEEN_PAGES));
+      }
+    }
+
+    if (tabId) {
+      try {
+        chrome.tabs.sendMessage(tabId, {
+          type: 'SMART_LOAD_MORE_DONE',
+          lastPage: lastPage,
+          hasMore: hasMore
+        });
+      } catch (e) {}
+    }
+
+    sendResponse({
+      ok: true,
+      itemsFetched: totalFetched,
+      lastPage: lastPage,
+      hasMore: hasMore
+    });
+  } catch (e) {
+    console.error('[Smart Shopper BG] Load more error:', e);
+    sendResponse({ ok: false, error: String(e) });
+  }
+}
+
+/* ============================================
+   جلب صفحة
+   ============================================ */
 async function fetchPage(url) {
   try {
     const res = await fetch(url, {
@@ -125,25 +209,13 @@ async function fetchPage(url) {
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
       }
     });
-
-    if (!res.ok) {
-      console.warn('[Smart Shopper BG] HTTP error:', res.status);
-      return [];
-    }
-
+    if (!res.ok) return [];
     const html = await res.text();
-    console.log('[Smart Shopper BG] HTML size:', html.length);
-
-    if (html.length < 5000) {
-      console.warn('[Smart Shopper BG] ⚠️ HTML too small, likely blocked');
-      return [];
-    }
-
+    if (html.length < 5000) return [];
     let items = parseItems(html);
     if (!items.length) items = fallbackIds(html);
     return items;
   } catch (e) {
-    console.warn('[Smart Shopper BG] Fetch error:', e.message);
     return [];
   }
 }
@@ -169,7 +241,6 @@ function extractText(v) {
   return String(v);
 }
 
-/* ---------- استخراج المنتجات ---------- */
 function parseItems(html) {
   const arrText = extractJsonArray(html, '"itemList"') || extractJsonArray(html, '"gridItems"');
   if (!arrText) return [];
