@@ -21,7 +21,9 @@
       errorContact: 'Impossible de contacter AliExpress. Réessayez.',
       refresh: 'Actualiser',
       minimize: 'Réduire',
-      close: 'Fermer'
+      close: 'Fermer',
+      loading: 'Chargement…',
+      pageOf: 'Page {p} sur {t}'
     },
     en: {
       panelTitle: 'Smart Shopper',
@@ -39,7 +41,9 @@
       errorContact: 'Cannot contact AliExpress. Try again.',
       refresh: 'Refresh',
       minimize: 'Minimize',
-      close: 'Close'
+      close: 'Close',
+      loading: 'Loading…',
+      pageOf: 'Page {p} of {t}'
     },
     ar: {
       panelTitle: 'Smart Shopper',
@@ -57,7 +61,9 @@
       errorContact: 'تعذّر الاتصال بـ AliExpress. حاول مرة أخرى.',
       refresh: 'تحديث',
       minimize: 'تصغير',
-      close: 'إغلاق'
+      close: 'إغلاق',
+      loading: 'جارٍ التحميل…',
+      pageOf: 'صفحة {p} من {t}'
     }
   };
 
