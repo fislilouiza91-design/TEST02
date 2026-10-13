@@ -1,6 +1,7 @@
 /* ============================================
    Smart Shopper - Content Script
    Batches of 60 items, max 200, re-sort all
+   No "View all" link
    ============================================ */
 (function () {
   'use strict';
@@ -416,7 +417,7 @@
   }
 
   /* ============================================
-     renderList - عرض كل العناصر (مع Batched rendering)
+     renderList
      ============================================ */
   function renderList(reset, renderUpTo) {
     const l = document.getElementById('ss-list'); if (!l) return;
@@ -453,24 +454,20 @@
   }
 
   /* ============================================
-     Footer - زر المزيد
+     Footer - بدون رابط "View all"
      ============================================ */
   function updateFooter() {
     const f = document.getElementById('ss-footer'); if (!f) return;
 
     let html = '';
 
-    // رابط "عرض الكل"
-    if (cachedSearchUrl) {
-      html += `<a href="${esc(cachedSearchUrl)}" target="_blank" rel="noopener" class="ss-footer-link">${esc(T('viewAll'))}</a>`;
-    }
+    // ✅ لا يوجد رابط "View all on AliExpress"
 
     // الزر / الحالات
     if (!searchState.running) {
       const reachedMax = cachedItems.length >= MAX_TOTAL_ITEMS;
 
       if (reachedMax) {
-        // وصلنا للحد الأقصى
         html += `<div class="ss-no-more">${cachedItems.length} / ${MAX_TOTAL_ITEMS} · ${esc(T('noMoreResults'))}</div>`;
       } else if (hasMoreResults) {
         if (fetchingMore) {
@@ -485,19 +482,16 @@
           </button>`;
         }
       } else {
-        // لا مزيد من النتائج
         if (cachedItems.length > 0) {
           html += `<div class="ss-no-more">${esc(T('noMoreResults'))}</div>`;
         }
       }
     }
 
-    // عداد
+    // عداد العناصر
     const remaining = cachedSortedItems.length - renderedCount;
     if (remaining > 0) {
       html += `<div class="ss-loading-more">${renderedCount} / ${cachedSortedItems.length} · ${esc(T('scrollForMore'))}</div>`;
-    } else if (cachedItems.length > 0 && !searchState.running) {
-      html += `<div class="ss-loading-more">${cachedItems.length} ${esc(T('soldSuffix')) === 'vendus' ? 'produits' : 'items'}</div>`;
     }
 
     f.innerHTML = html;
@@ -532,7 +526,6 @@
       if (!resp || !resp.ok) {
         console.warn('[Smart Shopper] Load more failed:', resp && resp.error);
         if (resp && resp.hasMore !== false) {
-          // خطأ مؤقت - أعد إظهار الزر
           hasMoreResults = true;
         } else {
           hasMoreResults = false;
@@ -541,14 +534,12 @@
         return;
       }
 
-      // ✅ إضافة العناصر الجديدة
       if (resp.items && resp.items.length) {
         cachedItems = cachedItems.concat(resp.items);
         lastPageFetched = resp.lastPage || nextPage;
 
         console.log('[Smart Shopper] Added', resp.items.length, 'items (total:', cachedItems.length, ')');
 
-        // 🔄 إعادة الترتيب الكامل + عرض كل القائمة من البداية
         applySort();
 
         const list = document.getElementById('ss-list');
@@ -558,7 +549,6 @@
           list.innerHTML = '';
           renderedCount = 0;
           setupImageObserver();
-          // عرض كل العناصر مباشرة (لأن العدد لن يتجاوز 200)
           renderList(false, cachedSortedItems.length);
           list.scrollTop = scrollTop;
         }
