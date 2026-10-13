@@ -1,6 +1,6 @@
 /* ============================================
    Smart Shopper - Content Script
-   Self-fetch from current domain + clean display URL
+   Self-fetch + HTML DOM fallback + fast search
    ============================================ */
 (function () {
   'use strict';
@@ -9,9 +9,8 @@
 
   const PANEL_ID = 'ss-panel';
   const BATCH_SIZE = 15;
-  const ESTIMATED_SEARCH_TIME = 10000;
-  const MAX_PAGES = 6;
-  const DELAY_BETWEEN_BATCHES = 800;
+  const ESTIMATED_SEARCH_TIME = 8000;
+  const DELAY_BETWEEN_BATCHES = 1200;
   const MAX_RETRIES = 3;
 
   const T = (key) => (window.SS_I18N ? window.SS_I18N.t(key) : key);
@@ -327,26 +326,33 @@
         console.log('[Smart Shopper] Attempt', attempt, ':', url.slice(0, 100));
 
         const res = await fetch(url, {
-          credentials: 'same-origin',
+          credentials: 'include',
           headers: {
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-            'Accept-Language': navigator.language || 'fr-FR,fr;q=0.9,en;q=0.8',
-            'Referer': location.origin + '/',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+            'Accept-Language': 'fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7',
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache',
+            'Referer': location.href,
+            'Sec-Ch-Ua': '"Chromium";v="126", "Not;A=Brand";v="24"',
+            'Sec-Ch-Ua-Mobile': '?0',
+            'Sec-Ch-Ua-Platform': '"Windows"',
             'Sec-Fetch-Dest': 'document',
             'Sec-Fetch-Mode': 'navigate',
             'Sec-Fetch-Site': 'same-origin',
+            'Sec-Fetch-User': '?1',
             'Upgrade-Insecure-Requests': '1'
-          }
+          },
+          redirect: 'follow'
         });
 
-        console.log('[Smart Shopper] HTTP', res.status, '| size:', res.headers.get('content-length') || '?');
+        console.log('[Smart Shopper] HTTP', res.status, '| final URL:', res.url.slice(0, 100));
 
         if (res.status === 200) {
           const html = await res.text();
           console.log('[Smart Shopper] HTML size:', html.length);
 
           if (html.length < 5000) {
-            console.warn('[Smart Shopper] ⚠️ Small HTML (probably CAPTCHA/redirect)');
+            console.warn('[Smart Shopper] ⚠️ HTML too small, likely CAPTCHA');
             return null;
           }
 
@@ -354,18 +360,18 @@
         }
 
         if (res.status === 429 || res.status === 403) {
-          const wait = 1500 * attempt;
+          const wait = 2000 * attempt;
           console.warn('[Smart Shopper] Blocked (' + res.status + '), waiting', wait, 'ms');
           await new Promise(r => setTimeout(r, wait));
           continue;
         }
 
         if (res.status === 404) return null;
-        await new Promise(r => setTimeout(r, 800 * attempt));
+        await new Promise(r => setTimeout(r, 1000 * attempt));
       } catch (e) {
         console.warn('[Smart Shopper] Fetch error attempt', attempt, ':', e.message);
         if (attempt < MAX_RETRIES) {
-          await new Promise(r => setTimeout(r, 800 * attempt));
+          await new Promise(r => setTimeout(r, 1000 * attempt));
         }
       }
     }
@@ -417,64 +423,150 @@
     return String(s).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
   }
 
+  /* ============================================
+     PARSE: try JSON first, then HTML DOM
+     ============================================ */
   function parseItems(html) {
+    // محاولة 1: JSON
     const arrText = extractJsonArray(html, '"itemList"') || extractJsonArray(html, '"gridItems"');
-    if (!arrText) {
-      console.warn('[Smart Shopper] No itemList marker found');
-      return [];
-    }
-    let arr;
-    try { arr = JSON.parse(arrText); } catch (e) {
-      console.warn('[Smart Shopper] JSON parse failed:', e.message);
-      return [];
-    }
-    if (!Array.isArray(arr)) return [];
-
-    const out = [];
-    for (const o of arr) {
+    if (arrText) {
       try {
-        if (!o || typeof o !== 'object') continue;
-        const id = o.productId || o.id || (o.item && o.item.productId);
-        if (!id) continue;
-
-        const rawTitle = o.title || (o.item && o.item.title) || o.displayTitle || '';
-        const title = clean(extractText(rawTitle));
-
-        let img = '';
-        if (o.image) {
-          if (typeof o.image === 'string') img = o.image;
-          else img = o.image.imgUrl || o.image.imageUrl || o.image.url || '';
+        const arr = JSON.parse(arrText);
+        if (Array.isArray(arr) && arr.length) {
+          const items = [];
+          for (const o of arr) {
+            try {
+              if (!o || typeof o !== 'object') continue;
+              const id = o.productId || o.id || (o.item && o.item.productId);
+              if (!id) continue;
+              const rawTitle = o.title || (o.item && o.item.title) || o.displayTitle || '';
+              const title = clean(extractText(rawTitle));
+              let img = '';
+              if (o.image) {
+                if (typeof o.image === 'string') img = o.image;
+                else img = o.image.imgUrl || o.image.imageUrl || o.image.url || '';
+              }
+              if (!img && o.picUrl) {
+                if (typeof o.picUrl === 'string') img = o.picUrl;
+                else img = o.picUrl.imgUrl || o.picUrl.url || '';
+              }
+              if (img && img.startsWith('//')) img = 'https:' + img;
+              const p = o.prices || {};
+              const sale = p.salePrice || {};
+              const orig = p.originalPrice || {};
+              const price = extractText(sale.formatedActivityPrice || sale.formatedPrice ||
+                            sale.minActivityPrice || sale.minPrice || p.formatedPrice || p.minPrice || '');
+              const oldPrice = extractText(orig.formatedPrice || orig.minPrice || '');
+              const discount = extractText(o.discount || sale.discount || '');
+              const rating = extractText(
+                (o.evaluation && (o.evaluation.starRating || o.evaluation.averageStar)) ||
+                o.averageStarRate || o.starRating || ''
+              );
+              const sold = extractText(o.tradeDesc || o.sold || o.soldCount || '');
+              items.push({
+                id: String(id), title: title || 'Produit similaire',
+                img, price, oldPrice, discount, rating, sold,
+                link: 'https://www.aliexpress.com/item/' + id + '.html'
+              });
+            } catch (e) {}
+          }
+          if (items.length) {
+            console.log('[Smart Shopper] Parsed', items.length, 'items from JSON');
+            return items;
+          }
         }
-        if (!img && o.picUrl) {
-          if (typeof o.picUrl === 'string') img = o.picUrl;
-          else img = o.picUrl.imgUrl || o.picUrl.url || '';
-        }
-        if (img && img.startsWith('//')) img = 'https:' + img;
-
-        const p = o.prices || {};
-        const sale = p.salePrice || {};
-        const orig = p.originalPrice || {};
-        const price = extractText(sale.formatedActivityPrice || sale.formatedPrice ||
-                      sale.minActivityPrice || sale.minPrice || p.formatedPrice || p.minPrice || '');
-        const oldPrice = extractText(orig.formatedPrice || orig.minPrice || '');
-        const discount = extractText(o.discount || sale.discount || '');
-
-        const rating = extractText(
-          (o.evaluation && (o.evaluation.starRating || o.evaluation.averageStar)) ||
-          o.averageStarRate || o.starRating || ''
-        );
-        const sold = extractText(o.tradeDesc || o.sold || o.soldCount || '');
-
-        out.push({
-          id: String(id),
-          title: title || 'Produit similaire',
-          img, price, oldPrice, discount, rating, sold,
-          link: 'https://www.aliexpress.com/item/' + id + '.html'
-        });
-      } catch (e) {}
+      } catch (e) {
+        console.warn('[Smart Shopper] JSON parse failed:', e.message);
+      }
     }
-    console.log('[Smart Shopper] Parsed', out.length, 'items');
-    return out;
+
+    // محاولة 2: DOMParser
+    console.log('[Smart Shopper] Trying HTML DOM parsing...');
+    try {
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      const items = [];
+      const seen = new Set();
+
+      const links = doc.querySelectorAll('a[href*="/item/"]');
+      console.log('[Smart Shopper] Found', links.length, 'product links in HTML');
+
+      links.forEach(link => {
+        try {
+          const href = link.getAttribute('href') || '';
+          const idMatch = href.match(/\/item\/(\d{6,})\.html/);
+          if (!idMatch) return;
+          const id = idMatch[1];
+          if (seen.has(id)) return;
+          seen.add(id);
+
+          let title = '';
+          const titleEl = link.querySelector('h1, h2, h3, [class*="title" i], [class*="name" i]');
+          if (titleEl) title = clean(titleEl.textContent);
+          if (!title) {
+            const img = link.querySelector('img');
+            if (img && img.alt) title = clean(img.alt);
+          }
+          if (!title || title.length < 5) return;
+
+          let img = '';
+          const imgEl = link.querySelector('img');
+          if (imgEl) {
+            img = imgEl.src || imgEl.dataset.src || imgEl.getAttribute('data-src') || '';
+          }
+          if (img && img.startsWith('//')) img = 'https:' + img;
+
+          let price = '';
+          const priceEl = link.querySelector('[class*="price" i]');
+          if (priceEl) price = clean(priceEl.textContent).slice(0, 20);
+          if (!price) {
+            const fullText = link.textContent || '';
+            const priceMatch = fullText.match(/(?:€|\$|EUR|USD)\s*\d+[.,]?\d*/);
+            if (priceMatch) price = priceMatch[0];
+          }
+
+          let discount = '';
+          const fullText = link.textContent || '';
+          const discMatch = fullText.match(/(\d{1,2})%/);
+          if (discMatch) discount = discMatch[1];
+
+          let rating = '';
+          const ratingMatch = fullText.match(/(\d\.\d)\s*\/?\s*5/);
+          if (ratingMatch) rating = ratingMatch[1];
+
+          items.push({
+            id,
+            title: title.slice(0, 160),
+            img, price, oldPrice: '', discount, rating, sold: '',
+            link: 'https://www.aliexpress.com/item/' + id + '.html'
+          });
+        } catch (e) {}
+      });
+
+      if (!items.length) {
+        doc.querySelectorAll('[data-product-id]').forEach(el => {
+          try {
+            const id = el.getAttribute('data-product-id');
+            if (!id || seen.has(id)) return;
+            seen.add(id);
+            const title = clean(el.textContent).slice(0, 160);
+            if (!title || title.length < 5) return;
+            const imgEl = el.querySelector('img');
+            const img = imgEl ? (imgEl.src || imgEl.dataset.src || '') : '';
+            items.push({
+              id, title, img: img.startsWith('//') ? 'https:' + img : img,
+              price: '', oldPrice: '', discount: '', rating: '', sold: '',
+              link: 'https://www.aliexpress.com/item/' + id + '.html'
+            });
+          } catch (e) {}
+        });
+      }
+
+      console.log('[Smart Shopper] Parsed', items.length, 'items from HTML DOM');
+      return items;
+    } catch (e) {
+      console.error('[Smart Shopper] DOMParser error:', e.message);
+      return [];
+    }
   }
 
   function fallbackIds(html) {
@@ -494,58 +586,32 @@
   }
 
   /* ============================================
-     PERFORM SEARCH - clean display URL
+     PERFORM SEARCH - 2 pages only (fast)
      ============================================ */
   async function performSearch(title) {
     const q = encodeURIComponent((title || '').slice(0, 90));
     const origin = location.origin;
     const slug = encodeURIComponent(title.slice(0, 80)).replace(/%20/g, '-').toLowerCase();
 
-    // 🔒 رابط البحث الداخلي (للجلب فقط)
     const fetchUrl = `${origin}/wholesale?SearchText=${q}&catId=0`;
-
-    // 🌐 رابط العرض للمستخدم (نظيف بدون CAPTCHA)
     cachedSearchUrl = `https://www.aliexpress.com/w/wholesale-${slug}.html`;
 
     console.log('[Smart Shopper] === SEARCH START ===');
     console.log('[Smart Shopper] Origin:', origin);
     console.log('[Smart Shopper] Query:', q.slice(0, 60));
-    console.log('[Smart Shopper] Display URL:', cachedSearchUrl);
+    console.log('[Smart Shopper] Fetch URL:', fetchUrl);
 
     const seenIds = new Set();
     let totalFetched = 0;
 
-    // صفحة 1
-    const html1 = await fetchPageWithRetry(fetchUrl);
-    if (html1) {
-      let items = parseItems(html1);
-      if (!items.length) items = fallbackIds(html1);
-      for (const it of items) {
-        if (!it || !it.id || seenIds.has(it.id)) continue;
-        seenIds.add(it.id);
-        cachedItems.push(it);
-      }
-      totalFetched = cachedItems.length;
-      console.log('[Smart Shopper] Page 1 →', items.length, 'items');
+    // جلب صفحتين فقط
+    const pagesToFetch = [1, 2];
 
-      if (totalFetched > 0) {
-        applySort();
-        const list = document.getElementById('ss-list');
-        if (list) {
-          list.innerHTML = '';
-          renderedCount = 0;
-          setupImageObserver();
-          renderList(false);
-        }
-        updateFooter();
-      }
-    }
-
-    // باقي الصفحات
-    for (let page = 2; page <= MAX_PAGES; page++) {
+    for (const page of pagesToFetch) {
       if (closed) return;
 
-      const html = await fetchPageWithRetry(fetchUrl + '&page=' + page);
+      const url = page === 1 ? fetchUrl : fetchUrl + '&page=' + page;
+      const html = await fetchPageWithRetry(url);
       if (!html) continue;
 
       let items = parseItems(html);
@@ -559,23 +625,21 @@
       }
 
       if (newItems.length === 0) {
-        console.log('[Smart Shopper] Page', page, 'empty. Stopping.');
-        break;
+        console.log('[Smart Shopper] Page', page, 'empty.');
+        continue;
       }
 
       totalFetched += newItems.length;
       cachedItems = cachedItems.concat(newItems);
       console.log('[Smart Shopper] Page', page, '+', newItems.length, '(total:', totalFetched, ')');
 
-      const list = document.getElementById('ss-list');
-      const scrollTop = list ? list.scrollTop : 0;
       applySort();
+      const list = document.getElementById('ss-list');
       if (list) {
         list.innerHTML = '';
         renderedCount = 0;
         setupImageObserver();
         renderList(false);
-        list.scrollTop = scrollTop;
       }
       updateFooter();
 
