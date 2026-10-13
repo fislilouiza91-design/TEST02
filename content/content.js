@@ -1,6 +1,6 @@
 /* ============================================
    Smart Shopper - Content Script
-   Self-fetch + HTML DOM fallback + fast search
+   Progressive page-by-page loading + accurate countdown
    ============================================ */
 (function () {
   'use strict';
@@ -9,9 +9,6 @@
 
   const PANEL_ID = 'ss-panel';
   const BATCH_SIZE = 15;
-  const ESTIMATED_SEARCH_TIME = 8000;
-  const DELAY_BETWEEN_BATCHES = 1200;
-  const MAX_RETRIES = 3;
 
   const T = (key) => (window.SS_I18N ? window.SS_I18N.t(key) : key);
 
@@ -24,8 +21,18 @@
   let renderedCount = 0;
   let imageObserver = null;
   let isLoadingMore = false;
-  let searchComplete = false;
-  let searchStartTime = 0;
+
+  // حالة البحث
+  let searchState = {
+    running: false,
+    complete: false,
+    startTime: 0,
+    pagesTotal: 5,
+    pagesDone: 0,
+    totalItems: 0
+  };
+
+  // حالة العد التنازلي على التبويبات
   let pendingTabEl = null;
   let pendingInterval = null;
 
@@ -47,6 +54,9 @@
     return out;
   }
 
+  /* ============================================
+     فحص صفحة المنتج
+     ============================================ */
   function isProductPage() {
     return /aliexpress\.(com|us)\/(item|i)\/\d+/i.test(location.href);
   }
@@ -84,6 +94,25 @@
     return null;
   }
 
+  /* ============================================
+     حساب الوقت المتبقي بدقة
+     ============================================ */
+  function calcRemainingSec() {
+    if (searchState.complete) return 0;
+    if (!searchState.running) return 0;
+    if (searchState.pagesDone === 0) return 10; // تقدير افتراضي
+
+    const elapsedSec = (Date.now() - searchState.startTime) / 1000;
+    const avgPerPage = elapsedSec / searchState.pagesDone;
+    const remainingPages = Math.max(0, searchState.pagesTotal - searchState.pagesDone);
+    const remaining = remainingPages * avgPerPage;
+
+    return Math.max(1, Math.ceil(remaining));
+  }
+
+  /* ============================================
+     بناء النافذة
+     ============================================ */
   function buildPanel() {
     if (document.getElementById(PANEL_ID)) return;
     const panel = document.createElement('div');
@@ -109,6 +138,7 @@
           <span class="ss-tab" data-i="3">${esc(T('tabBestDiscount'))}</span>
           <span class="ss-tab" data-i="4">${esc(T('tabBestSelling'))}</span>
         </div>
+        <div class="ss-progress" id="ss-progress"></div>
         <div class="ss-list" id="ss-list"></div>
         <div class="ss-footer" id="ss-footer"></div>
       </div>`;
@@ -125,17 +155,48 @@
     makeDraggable(panel, document.getElementById('ss-header'));
   }
 
+  /* ============================================
+     Progress bar - يظهر أثناء البحث
+     ============================================ */
+  function updateProgress() {
+    const p = document.getElementById('ss-progress'); if (!p) return;
+    if (!searchState.running && !searchState.complete) { p.innerHTML = ''; return; }
+    if (searchState.complete) {
+      p.innerHTML = `<span class="ss-progress-done">✓ ${searchState.totalItems} résultats</span>`;
+      setTimeout(() => { if (p) p.innerHTML = ''; }, 2000);
+      return;
+    }
+    const done = searchState.pagesDone;
+    const total = searchState.pagesTotal;
+    const pct = Math.round((done / total) * 100);
+    p.innerHTML = `
+      <div class="ss-progress-bar">
+        <div class="ss-progress-fill" style="width:${pct}%"></div>
+      </div>
+      <span class="ss-progress-text">Page ${done}/${total} · ${searchState.totalItems} produits</span>
+    `;
+  }
+
+  /* ============================================
+     التبويبات
+     ============================================ */
   function onTabClick(e) {
     const t = e.target.closest('.ss-tab');
     if (!t) return;
     const newTab = +t.dataset.i;
     if (newTab === activeTab && !t.classList.contains('ss-tab-counting')) return;
-    if (searchComplete) {
+
+    if (searchState.complete) {
+      // البحث انتهى - تفعيل فوري
       activateTab(t, newTab);
-    } else {
+    } else if (searchState.running) {
+      // البحث جارٍ - ابدأ العد التنازلي
       if (pendingTabEl && pendingTabEl !== t) restoreTab(pendingTabEl);
       pendingTabEl = t;
       startPendingCountdown(t);
+    } else {
+      // لا يوجد بحث - تفعيل مباشر
+      activateTab(t, newTab);
     }
   }
 
@@ -160,17 +221,25 @@
   function startPendingCountdown(tabEl) {
     if (!tabEl.dataset.originalText) tabEl.dataset.originalText = tabEl.textContent;
     tabEl.classList.add('ss-tab-counting');
+
     const updateCountdown = () => {
-      if (searchComplete) { activateTab(tabEl, +tabEl.dataset.i); return; }
-      const elapsed = Date.now() - searchStartTime;
-      const remaining = Math.max(1, Math.ceil((ESTIMATED_SEARCH_TIME - elapsed) / 1000));
+      if (searchState.complete) {
+        // انتهى البحث - فعّل التبويب
+        activateTab(tabEl, +tabEl.dataset.i);
+        return;
+      }
+      const remaining = calcRemainingSec();
       tabEl.textContent = `⏳ ${remaining}s`;
     };
+
     updateCountdown();
     if (pendingInterval) clearInterval(pendingInterval);
-    pendingInterval = setInterval(updateCountdown, 1000);
+    pendingInterval = setInterval(updateCountdown, 500);
   }
 
+  /* ============================================
+     التمرير
+     ============================================ */
   function onScroll(e) {
     if (isLoadingMore) return;
     const list = e.target;
@@ -202,7 +271,7 @@
 
   function skeleton() {
     const l = document.getElementById('ss-list'); if (!l) return;
-    l.innerHTML = Array.from({ length: 6 }, () =>
+    l.innerHTML = Array.from({ length: 4 }, () =>
       `<div class="ss-card"><div class="ss-thumb-wrapper skel"></div><div class="ss-card-content"><div class="skel line"></div><div class="skel line short"></div></div><div class="ss-discount-box skel"></div></div>`).join('');
   }
 
@@ -318,364 +387,122 @@
   }
 
   /* ============================================
-     FETCH with full browser-like headers
+     بدء البحث
      ============================================ */
-  async function fetchPageWithRetry(url) {
-    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-      try {
-        console.log('[Smart Shopper] Attempt', attempt, ':', url.slice(0, 100));
-
-        const res = await fetch(url, {
-          credentials: 'include',
-          headers: {
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-            'Accept-Language': 'fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7',
-            'Cache-Control': 'no-cache',
-            'Pragma': 'no-cache',
-            'Referer': location.href,
-            'Sec-Ch-Ua': '"Chromium";v="126", "Not;A=Brand";v="24"',
-            'Sec-Ch-Ua-Mobile': '?0',
-            'Sec-Ch-Ua-Platform': '"Windows"',
-            'Sec-Fetch-Dest': 'document',
-            'Sec-Fetch-Mode': 'navigate',
-            'Sec-Fetch-Site': 'same-origin',
-            'Sec-Fetch-User': '?1',
-            'Upgrade-Insecure-Requests': '1'
-          },
-          redirect: 'follow'
-        });
-
-        console.log('[Smart Shopper] HTTP', res.status, '| final URL:', res.url.slice(0, 100));
-
-        if (res.status === 200) {
-          const html = await res.text();
-          console.log('[Smart Shopper] HTML size:', html.length);
-
-          if (html.length < 5000) {
-            console.warn('[Smart Shopper] ⚠️ HTML too small, likely CAPTCHA');
-            return null;
-          }
-
-          return html;
-        }
-
-        if (res.status === 429 || res.status === 403) {
-          const wait = 2000 * attempt;
-          console.warn('[Smart Shopper] Blocked (' + res.status + '), waiting', wait, 'ms');
-          await new Promise(r => setTimeout(r, wait));
-          continue;
-        }
-
-        if (res.status === 404) return null;
-        await new Promise(r => setTimeout(r, 1000 * attempt));
-      } catch (e) {
-        console.warn('[Smart Shopper] Fetch error attempt', attempt, ':', e.message);
-        if (attempt < MAX_RETRIES) {
-          await new Promise(r => setTimeout(r, 1000 * attempt));
-        }
-      }
-    }
-    return null;
-  }
-
-  function extractJsonArray(html, marker) {
-    const i = html.indexOf(marker);
-    if (i < 0) return null;
-    const j = html.indexOf('[', i);
-    if (j < 0) return null;
-    let depth = 0, inStr = false, esc2 = false;
-    for (let k = j; k < html.length; k++) {
-      const c = html[k];
-      if (inStr) {
-        if (esc2) esc2 = false;
-        else if (c === '\\') esc2 = true;
-        else if (c === '"') inStr = false;
-        continue;
-      }
-      if (c === '"') { inStr = true; continue; }
-      if (c === '[') depth++;
-      else if (c === ']') { depth--; if (depth === 0) return html.slice(j, k + 1); }
-    }
-    return null;
-  }
-
-  function extractText(v) {
-    if (v == null) return '';
-    if (typeof v === 'string') return v;
-    if (typeof v === 'number') return String(v);
-    if (typeof v === 'boolean') return v ? 'true' : '';
-    if (typeof v === 'object') {
-      const keys = ['displayTitle', 'text', 'title', 'value', 'name',
-        'formatedActivityPrice', 'formatedPrice', 'minActivityPrice', 'minPrice',
-        'price', 'desc', 'label'];
-      for (const k of keys) {
-        if (v[k] != null && typeof v[k] !== 'object') return String(v[k]);
-      }
-      for (const k in v) {
-        if (typeof v[k] === 'string' && v[k].length > 0) return v[k];
-      }
-      return '';
-    }
-    return String(v);
-  }
-
-  function clean(s) {
-    return String(s).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-  }
-
-  /* ============================================
-     PARSE: try JSON first, then HTML DOM
-     ============================================ */
-  function parseItems(html) {
-    // محاولة 1: JSON
-    const arrText = extractJsonArray(html, '"itemList"') || extractJsonArray(html, '"gridItems"');
-    if (arrText) {
-      try {
-        const arr = JSON.parse(arrText);
-        if (Array.isArray(arr) && arr.length) {
-          const items = [];
-          for (const o of arr) {
-            try {
-              if (!o || typeof o !== 'object') continue;
-              const id = o.productId || o.id || (o.item && o.item.productId);
-              if (!id) continue;
-              const rawTitle = o.title || (o.item && o.item.title) || o.displayTitle || '';
-              const title = clean(extractText(rawTitle));
-              let img = '';
-              if (o.image) {
-                if (typeof o.image === 'string') img = o.image;
-                else img = o.image.imgUrl || o.image.imageUrl || o.image.url || '';
-              }
-              if (!img && o.picUrl) {
-                if (typeof o.picUrl === 'string') img = o.picUrl;
-                else img = o.picUrl.imgUrl || o.picUrl.url || '';
-              }
-              if (img && img.startsWith('//')) img = 'https:' + img;
-              const p = o.prices || {};
-              const sale = p.salePrice || {};
-              const orig = p.originalPrice || {};
-              const price = extractText(sale.formatedActivityPrice || sale.formatedPrice ||
-                            sale.minActivityPrice || sale.minPrice || p.formatedPrice || p.minPrice || '');
-              const oldPrice = extractText(orig.formatedPrice || orig.minPrice || '');
-              const discount = extractText(o.discount || sale.discount || '');
-              const rating = extractText(
-                (o.evaluation && (o.evaluation.starRating || o.evaluation.averageStar)) ||
-                o.averageStarRate || o.starRating || ''
-              );
-              const sold = extractText(o.tradeDesc || o.sold || o.soldCount || '');
-              items.push({
-                id: String(id), title: title || 'Produit similaire',
-                img, price, oldPrice, discount, rating, sold,
-                link: 'https://www.aliexpress.com/item/' + id + '.html'
-              });
-            } catch (e) {}
-          }
-          if (items.length) {
-            console.log('[Smart Shopper] Parsed', items.length, 'items from JSON');
-            return items;
-          }
-        }
-      } catch (e) {
-        console.warn('[Smart Shopper] JSON parse failed:', e.message);
-      }
-    }
-
-    // محاولة 2: DOMParser
-    console.log('[Smart Shopper] Trying HTML DOM parsing...');
-    try {
-      const doc = new DOMParser().parseFromString(html, 'text/html');
-      const items = [];
-      const seen = new Set();
-
-      const links = doc.querySelectorAll('a[href*="/item/"]');
-      console.log('[Smart Shopper] Found', links.length, 'product links in HTML');
-
-      links.forEach(link => {
-        try {
-          const href = link.getAttribute('href') || '';
-          const idMatch = href.match(/\/item\/(\d{6,})\.html/);
-          if (!idMatch) return;
-          const id = idMatch[1];
-          if (seen.has(id)) return;
-          seen.add(id);
-
-          let title = '';
-          const titleEl = link.querySelector('h1, h2, h3, [class*="title" i], [class*="name" i]');
-          if (titleEl) title = clean(titleEl.textContent);
-          if (!title) {
-            const img = link.querySelector('img');
-            if (img && img.alt) title = clean(img.alt);
-          }
-          if (!title || title.length < 5) return;
-
-          let img = '';
-          const imgEl = link.querySelector('img');
-          if (imgEl) {
-            img = imgEl.src || imgEl.dataset.src || imgEl.getAttribute('data-src') || '';
-          }
-          if (img && img.startsWith('//')) img = 'https:' + img;
-
-          let price = '';
-          const priceEl = link.querySelector('[class*="price" i]');
-          if (priceEl) price = clean(priceEl.textContent).slice(0, 20);
-          if (!price) {
-            const fullText = link.textContent || '';
-            const priceMatch = fullText.match(/(?:€|\$|EUR|USD)\s*\d+[.,]?\d*/);
-            if (priceMatch) price = priceMatch[0];
-          }
-
-          let discount = '';
-          const fullText = link.textContent || '';
-          const discMatch = fullText.match(/(\d{1,2})%/);
-          if (discMatch) discount = discMatch[1];
-
-          let rating = '';
-          const ratingMatch = fullText.match(/(\d\.\d)\s*\/?\s*5/);
-          if (ratingMatch) rating = ratingMatch[1];
-
-          items.push({
-            id,
-            title: title.slice(0, 160),
-            img, price, oldPrice: '', discount, rating, sold: '',
-            link: 'https://www.aliexpress.com/item/' + id + '.html'
-          });
-        } catch (e) {}
-      });
-
-      if (!items.length) {
-        doc.querySelectorAll('[data-product-id]').forEach(el => {
-          try {
-            const id = el.getAttribute('data-product-id');
-            if (!id || seen.has(id)) return;
-            seen.add(id);
-            const title = clean(el.textContent).slice(0, 160);
-            if (!title || title.length < 5) return;
-            const imgEl = el.querySelector('img');
-            const img = imgEl ? (imgEl.src || imgEl.dataset.src || '') : '';
-            items.push({
-              id, title, img: img.startsWith('//') ? 'https:' + img : img,
-              price: '', oldPrice: '', discount: '', rating: '', sold: '',
-              link: 'https://www.aliexpress.com/item/' + id + '.html'
-            });
-          } catch (e) {}
-        });
-      }
-
-      console.log('[Smart Shopper] Parsed', items.length, 'items from HTML DOM');
-      return items;
-    } catch (e) {
-      console.error('[Smart Shopper] DOMParser error:', e.message);
-      return [];
-    }
-  }
-
-  function fallbackIds(html) {
-    const re = /"productId"\s*:\s*"(\d{6,})"/g;
-    const seen = new Set(); const out = [];
-    let m;
-    while ((m = re.exec(html))) {
-      if (seen.has(m[1])) continue;
-      seen.add(m[1]);
-      out.push({
-        id: m[1], title: 'Produit similaire', img: '', price: '', oldPrice: '',
-        discount: '', rating: '', sold: '',
-        link: 'https://www.aliexpress.com/item/' + m[1] + '.html'
-      });
-    }
-    return out;
-  }
-
-  /* ============================================
-     PERFORM SEARCH - 2 pages only (fast)
-     ============================================ */
-  async function performSearch(title) {
-    const q = encodeURIComponent((title || '').slice(0, 90));
-    const origin = location.origin;
-    const slug = encodeURIComponent(title.slice(0, 80)).replace(/%20/g, '-').toLowerCase();
-
-    const fetchUrl = `${origin}/wholesale?SearchText=${q}&catId=0`;
-    cachedSearchUrl = `https://www.aliexpress.com/w/wholesale-${slug}.html`;
-
-    console.log('[Smart Shopper] === SEARCH START ===');
-    console.log('[Smart Shopper] Origin:', origin);
-    console.log('[Smart Shopper] Query:', q.slice(0, 60));
-    console.log('[Smart Shopper] Fetch URL:', fetchUrl);
-
-    const seenIds = new Set();
-    let totalFetched = 0;
-
-    // جلب صفحتين فقط
-    const pagesToFetch = [1, 2];
-
-    for (const page of pagesToFetch) {
-      if (closed) return;
-
-      const url = page === 1 ? fetchUrl : fetchUrl + '&page=' + page;
-      const html = await fetchPageWithRetry(url);
-      if (!html) continue;
-
-      let items = parseItems(html);
-      if (!items.length) items = fallbackIds(html);
-
-      const newItems = [];
-      for (const it of items) {
-        if (!it || !it.id || seenIds.has(it.id)) continue;
-        seenIds.add(it.id);
-        newItems.push(it);
-      }
-
-      if (newItems.length === 0) {
-        console.log('[Smart Shopper] Page', page, 'empty.');
-        continue;
-      }
-
-      totalFetched += newItems.length;
-      cachedItems = cachedItems.concat(newItems);
-      console.log('[Smart Shopper] Page', page, '+', newItems.length, '(total:', totalFetched, ')');
-
-      applySort();
-      const list = document.getElementById('ss-list');
-      if (list) {
-        list.innerHTML = '';
-        renderedCount = 0;
-        setupImageObserver();
-        renderList(false);
-      }
-      updateFooter();
-
-      await new Promise(r => setTimeout(r, DELAY_BETWEEN_BATCHES));
-    }
-
-    console.log('[Smart Shopper] === DONE === Total:', totalFetched);
-    searchComplete = true;
-    if (pendingTabEl) activateTab(pendingTabEl, +pendingTabEl.dataset.i);
-    updateFooter();
-
-    if (totalFetched === 0) {
-      message(T('noResults'));
-    }
-  }
-
   function runSearch(title) {
     buildPanel();
     const panel = document.getElementById(PANEL_ID);
     panel.style.display = '';
+
+    // إعادة تعيين
     cachedItems = [];
     cachedSortedItems = [];
     renderedCount = 0;
-    searchComplete = false;
-    searchStartTime = Date.now();
     activeTab = 0;
+
     if (pendingInterval) { clearInterval(pendingInterval); pendingInterval = null; }
     if (pendingTabEl) { restoreTab(pendingTabEl); pendingTabEl = null; }
+
     document.querySelectorAll('.ss-tab').forEach(x => {
       x.classList.toggle('active', x.dataset.i === '0');
     });
-    skeleton();
 
-    performSearch(title);
+    // حالة البحث الجديدة
+    searchState = {
+      running: true,
+      complete: false,
+      startTime: Date.now(),
+      pagesTotal: 5, // قيمة افتراضية
+      pagesDone: 0,
+      totalItems: 0
+    };
+
+    skeleton();
+    updateProgress();
+
+    chrome.runtime.sendMessage({ type: 'SMART_SEARCH', title }, resp => {
+      if (!resp || !document.getElementById(PANEL_ID)) return;
+      if (!resp.ok) {
+        searchState.running = false;
+        message(T('errorContact'));
+        return;
+      }
+
+      // الدفعة الأولى
+      cachedItems = resp.items || [];
+      cachedSearchUrl = resp.searchUrl || '';
+      searchState.pagesTotal = resp.totalPages || 5;
+      searchState.pagesDone = resp.page || 1;
+      searchState.totalItems = cachedItems.length;
+
+      console.log('[Smart Shopper] Page 1 →', cachedItems.length, 'items');
+
+      renderList(true);
+      updateProgress();
+    });
   }
 
+  /* ============================================
+     استقبال التحديثات من background
+     ============================================ */
+  chrome.runtime.onMessage.addListener((msg) => {
+    if (!msg) return;
+
+    if (msg.type === 'SMART_SEARCH_UPDATE') {
+      const newItems = msg.items || [];
+      if (!newItems.length) return;
+
+      const existingIds = new Set(cachedItems.map(x => x.id));
+      const uniqueNew = newItems.filter(x => !existingIds.has(x.id));
+
+      if (uniqueNew.length) {
+        cachedItems = cachedItems.concat(uniqueNew);
+        cachedSearchUrl = msg.searchUrl || cachedSearchUrl;
+        searchState.pagesDone = msg.page || (searchState.pagesDone + 1);
+        searchState.pagesTotal = msg.totalPages || searchState.pagesTotal;
+        searchState.totalItems = cachedItems.length;
+
+        console.log('[Smart Shopper] Page', msg.page, '→ +' + uniqueNew.length, 'items (total:', cachedItems.length, ')');
+
+        // إعادة عرض مع الاحتفاظ بموضع التمرير
+        const list = document.getElementById('ss-list');
+        const scrollTop = list ? list.scrollTop : 0;
+        applySort();
+        if (list) {
+          list.innerHTML = '';
+          renderedCount = 0;
+          setupImageObserver();
+          renderList(false);
+          list.scrollTop = scrollTop;
+        }
+        updateFooter();
+        updateProgress();
+      }
+    }
+
+    if (msg.type === 'SMART_SEARCH_DONE') {
+      console.log('[Smart Shopper] === SEARCH DONE ===');
+      searchState.running = false;
+      searchState.complete = true;
+      searchState.totalItems = msg.totalItems || cachedItems.length;
+
+      // إذا كان هناك تبويب ينتظر، فعّله فوراً
+      if (pendingTabEl) {
+        activateTab(pendingTabEl, +pendingTabEl.dataset.i);
+      }
+
+      updateProgress();
+      updateFooter();
+
+      if (cachedItems.length === 0) {
+        message(T('noResults'));
+      }
+    }
+  });
+
+  /* ============================================
+     Scan
+     ============================================ */
   function scan() {
     if (closed) return;
 
@@ -683,6 +510,8 @@
       const existing = document.getElementById(PANEL_ID);
       if (existing) existing.remove();
       currentKey = '';
+      searchState.running = false;
+      searchState.complete = false;
       return;
     }
 
@@ -696,7 +525,7 @@
     runSearch(p.title);
   }
 
-  // SPA URL monitoring
+  // مراقبة SPA
   let lastUrl = location.href;
   new MutationObserver(() => {
     if (location.href !== lastUrl) {
