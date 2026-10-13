@@ -8,7 +8,7 @@
   window.__smartShopper = true;
 
   const PANEL_ID = 'ss-panel';
-  const RENDER_BATCH = 20;
+  const RENDER_BATCH = 30;   // ← زيادة من 20 إلى 30
 
   const T = (key, vars) => (window.SS_I18N ? window.SS_I18N.t(key, vars) : key);
 
