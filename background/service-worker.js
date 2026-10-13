@@ -1,10 +1,11 @@
 /* ============================================
    Smart Shopper - Background Service Worker
-   Sequential streaming - one page at a time
+   Sequential streaming - max 50 items
    ============================================ */
 
-const MAX_PAGES = 5;
-const DELAY_BETWEEN_PAGES = 4000; // 4 ثواني بين كل صفحة (سلوك بشري)
+const MAX_PAGES = 3;              // 3 صفحات كحد أقصى
+const MAX_ITEMS = 50;             // 50 منتج كحد أقصى
+const DELAY_BETWEEN_PAGES = 4000; // 4 ثواني بين كل صفحة
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (!msg || msg.type !== 'SMART_SEARCH') return;
@@ -16,13 +17,19 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       const baseUrl = 'https://www.aliexpress.com/wholesale?SearchText=' + q + '&catId=0';
 
       console.log('[Smart Shopper BG] === SEARCH START ===');
-      console.log('[Smart Shopper BG] Max pages:', MAX_PAGES);
+      console.log('[Smart Shopper BG] Max pages:', MAX_PAGES, '| Max items:', MAX_ITEMS);
 
       const seenIds = new Set();
       let totalFetched = 0;
       let firstSent = false;
 
       for (let page = 1; page <= MAX_PAGES; page++) {
+        // إذا وصلنا للحد الأقصى، توقف
+        if (totalFetched >= MAX_ITEMS) {
+          console.log('[Smart Shopper BG] Reached MAX_ITEMS limit. Stopping.');
+          break;
+        }
+
         console.log('[Smart Shopper BG] Fetching page', page);
 
         const url = page === 1 ? baseUrl : baseUrl + '&page=' + page;
@@ -33,6 +40,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         const newItems = [];
         for (const it of items) {
           if (!it || !it.id || seenIds.has(it.id)) continue;
+          // توقف إذا وصلنا 50
+          if (totalFetched + newItems.length >= MAX_ITEMS) break;
           seenIds.add(it.id);
           newItems.push(it);
         }
@@ -46,7 +55,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
         if (newItems.length > 0 && tabId) {
           if (!firstSent) {
-            // الدفعة الأولى - الرد المباشر
             sendResponse({
               ok: true,
               items: newItems,
@@ -58,7 +66,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             });
             firstSent = true;
           } else {
-            // دفعات لاحقة - إرسال تحديث
             try {
               chrome.tabs.sendMessage(tabId, {
                 type: 'SMART_SEARCH_UPDATE',
@@ -72,7 +79,13 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           }
         }
 
-        // انتظار بين الصفحات (باستثناء الأخيرة)
+        // إذا وصلنا الحد، توقف
+        if (totalFetched >= MAX_ITEMS) {
+          console.log('[Smart Shopper BG] Reached MAX_ITEMS after page', page);
+          break;
+        }
+
+        // انتظار بين الصفحات
         if (page < MAX_PAGES) {
           await new Promise(r => setTimeout(r, DELAY_BETWEEN_PAGES));
         }
