@@ -1,6 +1,6 @@
 /* ============================================
    Smart Shopper - Content Styles
-   With SVG icons + currency symbol
+   With SVG icons + Currency symbol + Price comparison
    ============================================ */
 
 * { box-sizing: border-box; }
@@ -297,7 +297,7 @@
 .ss-no-info { color: #bbb; font-size: 10px; font-style: italic; }
 
 /* ============================================
-   Discount Box (with currency symbol)
+   Discount Box - Default (Green = cheaper or equal)
    ============================================ */
 .ss-discount-box {
     flex-shrink: 0;
@@ -333,8 +333,28 @@
     white-space: nowrap;
 }
 
-.ss-discount-box.ss-no-discount { background: #f5f5f5; border-color: #e8e8e8; }
-.ss-discount-box.ss-no-discount .ss-price-main { color: #666; font-size: 11px; }
+.ss-discount-box.ss-no-discount {
+    background: #f5f5f5;
+    border-color: #e8e8e8;
+}
+.ss-discount-box.ss-no-discount .ss-price-main {
+    color: #666;
+    font-size: 11px;
+}
+
+/* ============================================
+   💰 Higher price than current product (Red/Orange)
+   ============================================ */
+.ss-discount-box.ss-higher-price {
+    background: #fff0ee;
+    border-color: #ffd4cc;
+}
+.ss-discount-box.ss-higher-price .ss-price-main {
+    color: #e62e04;
+}
+.ss-discount-box.ss-higher-price .ss-discount-label {
+    color: #e62e04;
+}
 
 /* ============================================
    Messages
@@ -392,4 +412,15 @@
 @keyframes ss-skel {
     0% { background-position: 200% 0; }
     100% { background-position: -200% 0; }
+}
+
+/* ============================================
+   RTL Support (Arabic, Hebrew, Urdu, Persian)
+   ============================================ */
+#ss-panel[dir="rtl"] {
+    direction: rtl;
+}
+#ss-panel[dir="rtl"] .ss-title,
+#ss-panel[dir="rtl"] .ss-sub {
+    text-align: right;
 }
